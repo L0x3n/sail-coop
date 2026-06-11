@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import type { V2 } from './mathUtil';
 
-export interface Axes { fwd: number; strafe: number; j: number; h: number; }
+export interface Axes { fwd: number; strafe: number; j: number; h: number; u: number; }
 
 export interface PirateParts {
   eyes: THREE.Mesh[];
@@ -51,6 +51,7 @@ export interface CharSnap {
   x: number; z: number; y: number; f: number; m: CharMode; kn: number; st: Station;
   gb: number; hm: boolean; sc: number;
 }
+export interface MopSnap { x: number; z: number; h: number; held: number; thrown: boolean; on: boolean; }
 export interface Snapshot {
   k: 's';
   b: { x: number; z: number; yaw: number; vx: number; vz: number; av: number;
@@ -58,7 +59,7 @@ export interface Snapshot {
   w: { a: number; s: number; wid: number; wl: number };
   t: number; d: boolean;
   c: CharSnap[];
-  m: { x: number; z: number; held: number };   // the mop (boat-local; held = char index or -1)
+  m: MopSnap[];   // the mops (boat-local)
 }
 export type NetMsg =
   | Snapshot
@@ -69,6 +70,7 @@ export type NetMsg =
   | { k: 'fx'; fx: 'poop'; id: number; x: number; z: number }
   | { k: 'fx'; fx: 'unsplat'; id: number }
   | { k: 'f' }                                  // matey pressed the hands key (edge)
+  | { k: 'm0' }                                 // matey tapped LMB (whack attempt)
   | { k: 'reset' }
   | { k: 'restart?' };
 

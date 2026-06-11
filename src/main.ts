@@ -15,12 +15,12 @@ import { localToWorld2, resetState, tryToggleStation, updateChar } from './simCh
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
 import { clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
-import { handsEdge, mop, resetHands, updateHands, updateMopVisual } from './hands';
+import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
 import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
-  netCode, requestRestart, sendGrab, sendHandsEdge, startHost, startJoin, startSolo,
+  netCode, requestRestart, sendGrab, sendHandsEdge, sendMopTap, startHost, startJoin, startSolo,
 } from './net';
 import type { BoatPreset, Char } from './types';
 
@@ -34,7 +34,7 @@ function makeChar(name: string, shirt: number, hat: number, lx: number, lz: numb
     pos: v2(lx, lz), vel: v2(),
     knock: 0, walkPhase: 0, facing: 0, pitch: 0,
     jumpY: 0, vy: 0,
-    netAxes: { fwd: 0, strafe: 0, j: 0, h: 0 },
+    netAxes: { fwd: 0, strafe: 0, j: 0, h: 0, u: 0 },
     overboardCount: 0,
     animMoving: false,
     rippleT: 0,
@@ -58,12 +58,16 @@ function handleLocalKeys() {
     if (code === 'KeyQ') toast('Water: ' + cycleWater(), '#74c0fc');
     if (code === 'KeyM') toggleMap();
     if (code === 'KeyE' && !session.docked && myChar().mode === 'deck') {
-      if (netRole === 'guest') sendGrab();   // host owns the stations
-      else tryToggleStation(p1);
+      if (netRole === 'guest') sendGrab();   // host runs the E-interaction (mop/stations)
+      else pressE(p1);
     }
     if (code === 'KeyF' && !session.docked) {
       if (netRole === 'guest') sendHandsEdge();   // host simulates hands too
       else handsEdge(p1);
+    }
+    if (code === 'Mouse0' && !session.docked) {
+      if (netRole === 'guest') sendMopTap();
+      else mopTap(p1);
     }
   }
 }
@@ -188,8 +192,8 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS, mop,
-  _hands: { handsEdge, updateHands, resetHands },
+  env, layout, BOATS, mops,
+  _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
   _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
   get netCode() { return netCode; },
   get waterMode() { return waterMode; },

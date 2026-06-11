@@ -20,9 +20,13 @@ window.addEventListener('keyup', e => { keys[e.code] = false; });
 /* --- mouse look: pointer lock when the browser allows it, drag-to-look fallback
        otherwise (embedded panels/iframes often deny pointer lock silently) --- */
 export let dragLook = false;
-document.addEventListener('mousedown', () => {
+document.addEventListener('mousedown', e => {
   if (!gameStarted()) return;
   dragLook = true;
+  if (e.button === 0) {                     // LMB doubles as the "use" button (scrub/whack)
+    if (!keys['Mouse0']) pressedQueue.push('Mouse0');
+    keys['Mouse0'] = true;
+  }
   if (!document.pointerLockElement) {
     try {
       const p = renderer.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
@@ -30,7 +34,10 @@ document.addEventListener('mousedown', () => {
     } catch { /* ignored */ }
   }
 });
-document.addEventListener('mouseup', () => { dragLook = false; });
+document.addEventListener('mouseup', e => {
+  dragLook = false;
+  if (e.button === 0) keys['Mouse0'] = false;
+});
 document.addEventListener('mousemove', e => {
   if (session.inMenu) return;
   if (!document.pointerLockElement && !dragLook) return;
@@ -47,6 +54,7 @@ export function inputAxes(): Axes {
     strafe: (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0),
     j: keys['Space'] ? 1 : 0,
     h: keys['KeyF'] ? 1 : 0,
+    u: keys['Mouse0'] ? 1 : 0,
   };
 }
-export const ZERO_AXES: Axes = { fwd: 0, strafe: 0, j: 0, h: 0 };
+export const ZERO_AXES: Axes = { fwd: 0, strafe: 0, j: 0, h: 0, u: 0 };

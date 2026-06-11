@@ -3,7 +3,10 @@ import { CONFIG, STATION_R } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
 import { boat, chars, layout, myChar, session, tuning, wind } from './state';
 import { stationTakenBy } from './simChars';
+import { nearestFreeMop } from './hands';
+import { charActive } from './state';
 import { dragLook } from './input';
+import { splats } from './state';
 import { pierA, dockMidZ } from './world';
 import { dockedChime } from './audio';
 import { cam1 } from './scene';
@@ -29,6 +32,7 @@ const lookHintEl = el('lookHint');
 const msgEl = el('msg'), msgTextEl = el('msgText');
 const struggleEl = el('struggle');
 const scrubRingEl = el('scrubRing');
+const mopHintEl = el('mopHint');
 const _projV = new THREE.Vector3();
 
 /* =========================== toast (+ relay hook for the host) =========================== */
@@ -120,10 +124,30 @@ function stationPromptText(c: Char, keyName: string): string {
     return 'OVERBOARD ' + (dist | 0) + 'm / ' + CONFIG.swimLeash + 'm — boat is ' + dir;
   }
   if (c.station) return keyName + ' — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL');
-  if (!stationTakenBy('helm') &&
-      Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z) < STATION_R) return keyName + ' — man the HELM';
-  if (!stationTakenBy('sail') &&
-      Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z) < STATION_R) return keyName + ' — man the SAIL';
+  if (c.hasMop) {
+    // holding the mop: the prompt nudges you toward the nearest splat
+    const near = splats.some(s => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) < CONFIG.scrubRange);
+    return near ? 'Hold LMB — scrub the poop!' : '';
+  }
+  // nearest interactive wins the prompt: helm, sail or a free mop
+  const options: { d: number; txt: string }[] = [];
+  if (!stationTakenBy('helm')) {
+    const d = Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z);
+    if (d < STATION_R) options.push({ d, txt: keyName + ' — man the HELM' });
+  }
+  if (!stationTakenBy('sail')) {
+    const d = Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z);
+    if (d < STATION_R) options.push({ d, txt: keyName + ' — man the SAIL' });
+  }
+  const freeMop = nearestFreeMop(c, CONFIG.mopPickupR);
+  if (freeMop) options.push({ d: Math.hypot(freeMop.x - c.pos.x, freeMop.z - c.pos.z), txt: keyName + ' — pick up the mop' });
+  if (options.length) return options.sort((a, b) => a.d - b.d)[0].txt;
+  // empty hands near the matey: you COULD just grab them
+  const other = chars.find(o => o !== c && charActive(o));
+  if (other && other.mode === 'deck' && other.grabbedBy < 0 &&
+      Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) < CONFIG.grabRange) {
+    return 'F (hold) — grab your matey';
+  }
   return '';
 }
 
@@ -154,6 +178,13 @@ export function drawHud(t: number) {
       struggleEl.textContent = (victim === myChar() ? 'MASH F! ' : '✊ ') + victim.mash + '/' + CONFIG.escapeMash;
     } else struggleEl.style.display = 'none';
   } else struggleEl.style.display = 'none';
+
+  // holding the mop: show what it can do
+  const meH = myChar();
+  if (!session.inMenu && meH.hasMop && meH.mode === 'deck') {
+    mopHintEl.style.display = 'block';
+    mopHintEl.innerHTML = '🧹 <b>hold LMB</b> scrub · <b>tap LMB</b> bonk matey · <b>F</b> throw · <b>E</b> put down';
+  } else mopHintEl.style.display = 'none';
 
   // scrub progress ring
   const me = myChar();

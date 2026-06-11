@@ -3,98 +3,209 @@ import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, wrapPi } from './mathUtil';
 import { charActive, chars, layout } from './state';
 import { heelGroup } from './shipMesh';
-import { charAxes, releaseStation } from './simChars';
+import { charAxes, localToWorld2, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
+import { spawnSplash } from './effects';
 import { toast } from './hud';
+import * as audio from './audio';
 import type { Char } from './types';
 
 /* ===================================================================
-   Hands (F): mop pickup/scrub/drop + grabbing and throwing the other
-   pirate. All simulated host-side; the matey's F arrives as net events.
+   Hands: mops (E pick up / put down, LMB scrub or WHACK, F throw)
+   and grabbing/throwing the other pirate (F, when empty-handed).
+   All simulated host-side; the matey's clicks arrive as net events.
    =================================================================== */
 
-/* --- the mop + its bucket --- */
-export const mop = { held: -1, x: -1.05, z: -0.35 };   // boat-local; held = char index or -1
-const mopGroup = new THREE.Group();
-{
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.15, 6),
-    new THREE.MeshLambertMaterial({ color: 0x9a6b3f }));
-  handle.position.y = 0.55;
-  mopGroup.add(handle);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6),
-    new THREE.MeshLambertMaterial({ color: 0xd8d4c4 }));
-  head.scale.set(1.2, 0.55, 1.2);
-  head.position.y = 0.02;
-  mopGroup.add(head);
-  heelGroup.add(mopGroup);
+export interface Mop {
+  held: number;          // char index or -1
+  x: number; z: number;  // boat-local
+  h: number;             // height above deck (thrown arc)
+  vx: number; vz: number; vy: number;
+  thrown: boolean;
+  thrower: number;       // who launched it (immune to their own throw)
+  on: boolean;           // exists this session (mop #2 only in co-op)
+  mesh: THREE.Group;
+  bucket: THREE.Group;
 }
-const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.32, 10),
-  new THREE.MeshLambertMaterial({ color: 0x4d6a7a }));
-bucket.position.set(-1.05, DECK_Y + 0.16, -0.35);
-heelGroup.add(bucket);
-export function placeMopHome() {
-  mop.held = -1;
-  mop.x = bucket.position.x;
-  mop.z = bucket.position.z;
-}
-placeMopHome();
 
-/* visual update runs on host AND guest (guest gets mop.held/x/z from snapshots) */
-export function updateMopVisual(t: number) {
-  if (mop.held >= 0) {
-    const c = chars[mop.held];
-    const f = headVec(c.facing);
-    const scrub = c.scrubT > 0 ? Math.sin(t * 16) * 0.25 : 0;
-    mopGroup.position.set(
-      c.pos.x + f.x * 0.42 + scrub * Math.cos(c.facing) * 0.4,
-      DECK_Y + (c.scrubT > 0 ? 0.02 : 0.18),
-      c.pos.z + f.z * 0.42 - scrub * Math.sin(c.facing) * 0.4);
-    mopGroup.rotation.set(c.scrubT > 0 ? 0.9 : 0.35, c.facing, 0);
-  } else {
-    mopGroup.position.set(mop.x, DECK_Y + (isAtBucket() ? 0.3 : 0.04), mop.z);
-    mopGroup.rotation.set(isAtBucket() ? 0 : Math.PI / 2 - 0.08, 0.6, 0);
+function buildMopMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshLambertMaterial({ color: 0xa9764a });
+  const grip = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+  const metal = new THREE.MeshLambertMaterial({ color: 0x8d959c });
+  const strands = new THREE.MeshLambertMaterial({ color: 0xe8e2d0 });
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1.25, 7), wood);
+  handle.position.y = 0.72;
+  g.add(handle);
+  const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.18, 7), grip);
+  wrap.position.y = 1.22;
+  g.add(wrap);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.08, 8), metal);
+  collar.position.y = 0.13;
+  g.add(collar);
+  const headCone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.16, 9), strands);
+  headCone.position.y = 0.04;
+  g.add(headCone);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const strand = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.16, 3, 5), strands);
+    strand.position.set(Math.cos(a) * 0.09, -0.07, Math.sin(a) * 0.09);
+    strand.rotation.z = Math.cos(a) * 0.35;
+    strand.rotation.x = -Math.sin(a) * 0.35;
+    g.add(strand);
   }
+  g.traverse(o => {
+    if ((o as THREE.Mesh).isMesh) { o.castShadow = true; }
+  });
+  heelGroup.add(g);
+  return g;
 }
-const isAtBucket = () =>
-  Math.hypot(mop.x - bucket.position.x, mop.z - bucket.position.z) < 0.2;
+function buildBucket(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.19, 0.32, 12),
+    new THREE.MeshLambertMaterial({ color: 0x4d6a7a }));
+  body.position.y = 0.16;
+  body.castShadow = true;
+  g.add(body);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.022, 6, 14),
+    new THREE.MeshLambertMaterial({ color: 0x8d959c }));
+  rim.position.y = 0.32;
+  rim.rotation.x = Math.PI / 2;
+  g.add(rim);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(0.2, 12),
+    new THREE.MeshLambertMaterial({ color: 0x3d7ea6 }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = 0.27;
+  g.add(water);
+  heelGroup.add(g);
+  return g;
+}
 
-/* after dropping the mop you must step away before it sticks again */
-const dropCd = new Map<Char, number>();
+export const mops: Mop[] = [0, 1].map(() => ({
+  held: -1, x: 0, z: 0, h: 0, vx: 0, vz: 0, vy: 0,
+  thrown: false, thrower: -1, on: true,
+  mesh: buildMopMesh(), bucket: buildBucket(),
+}));
 
-/* --- F edge: drop mop / start grab / escape mash --- */
+/* lay the buckets out for the current boat; co-op gets the second mop */
+export function resetMops(coop: boolean) {
+  mops[1].on = coop;
+  mops.forEach((m, i) => {
+    const side = i === 0 ? -1 : 1;
+    m.bucket.position.set(side * layout.deckX * 0.72, DECK_Y, -0.35 * layout.scale);
+    m.bucket.visible = m.on;
+    m.held = -1;
+    m.thrown = false;
+    m.h = 0; m.vx = 0; m.vz = 0; m.vy = 0;
+    m.x = m.bucket.position.x;
+    m.z = m.bucket.position.z;
+    m.mesh.visible = m.on;
+  });
+  for (const c of chars) c.hasMop = false;
+}
+
+const mopOf = (c: Char): Mop | undefined => mops.find(m => m.on && m.held === chars.indexOf(c));
+export function nearestFreeMop(c: Char, r: number): Mop | undefined {
+  let best: Mop | undefined, bd = r;
+  for (const m of mops) {
+    if (!m.on || m.held >= 0 || m.thrown) continue;
+    const d = Math.hypot(m.x - c.pos.x, m.z - c.pos.z);
+    if (d < bd) { bd = d; best = m; }
+  }
+  return best;
+}
+function respawnMop(m: Mop, splashWorld: boolean) {
+  if (splashWorld) {
+    const w = localToWorld2({ x: clamp(m.x, -layout.deckX - 2, layout.deckX + 2), z: clamp(m.z, -layout.deckZ - 2, layout.deckZ + 2) });
+    spawnSplash(w.x, w.z, false);
+    toast('The mop went swimming — a spare appeared in the bucket', '#74c0fc');
+  }
+  m.held = -1;
+  m.thrown = false;
+  m.h = 0; m.vx = 0; m.vz = 0; m.vy = 0;
+  m.x = m.bucket.position.x;
+  m.z = m.bucket.position.z;
+}
+
+/* --- E: pick up / put down the mop, otherwise stations --- */
+export function pressE(c: Char) {
+  if (c.grabbedBy >= 0 || c.mode !== 'deck') return;
+  const mine = mopOf(c);
+  if (mine) {                               // put it down gently
+    c.hasMop = false;
+    mine.held = -1;
+    mine.x = clamp(c.pos.x, -layout.deckX, layout.deckX);
+    mine.z = clamp(c.pos.z, -layout.deckZ, layout.deckZ);
+    return;
+  }
+  const free = nearestFreeMop(c, CONFIG.mopPickupR);
+  if (free && !c.holding) {
+    free.held = chars.indexOf(c);
+    c.hasMop = true;
+    c.scrubT = 0;
+    return;
+  }
+  tryToggleStation(c);
+}
+
+/* --- F: throw the mop if you hold one, else grab the matey; mash to escape --- */
 export function handsEdge(c: Char) {
   const idx = chars.indexOf(c);
-  // grabbed? every press is a struggle
   if (c.grabbedBy >= 0) {
     c.mash++;
     if (c.mash >= CONFIG.escapeMash) breakFree(c, chars[c.grabbedBy]);
     return;
   }
   if (c.mode !== 'deck') return;
-  if (c.hasMop) {
-    // press near a splat starts scrubbing (handled by hold); away from any splat = drop
-    if (!nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) {
-      c.hasMop = false;
-      mop.held = -1;
-      mop.x = clamp(c.pos.x, -layout.deckX, layout.deckX);
-      mop.z = clamp(c.pos.z, -layout.deckZ, layout.deckZ);
-      dropCd.set(c, 1.0);
-    }
+  const mine = mopOf(c);
+  if (mine) {                               // YEET the mop
+    const f = headVec(c.facing);
+    mine.held = -1;
+    c.hasMop = false;
+    c.scrubT = 0;
+    mine.thrown = true;
+    mine.thrower = idx;
+    mine.x = c.pos.x + f.x * 0.5;
+    mine.z = c.pos.z + f.z * 0.5;
+    mine.h = 1.2;
+    mine.vx = f.x * CONFIG.mopThrowForce + c.vel.x * 0.5;
+    mine.vz = f.z * CONFIG.mopThrowForce + c.vel.z * 0.5;
+    mine.vy = CONFIG.mopThrowArc;
     return;
   }
-  // try to grab the other pirate
+  // grab the other pirate
   const other = chars[1 - idx];
   if (!other || !charActive(other) || other.mode !== 'deck') return;
   if (other.grabbedBy >= 0 || c.grabbedBy >= 0) return;
   if (Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) > CONFIG.grabRange) return;
-  // GRAB — works on stationed players too: yanks them right off the wheel
   if (other.station) toast(other.name + ' got yanked off the ' + other.station + '!', '#ffd95e');
   releaseStation(other);
-  if (other.hasMop) { other.hasMop = false; mop.held = -1; mop.x = other.pos.x; mop.z = other.pos.z; }
+  const theirs = mopOf(other);
+  if (theirs) { theirs.held = -1; theirs.x = other.pos.x; theirs.z = other.pos.z; other.hasMop = false; }
   other.grabbedBy = idx;
   other.mash = 0;
   c.holding = true;
   c.scrubT = 0;
+}
+
+/* --- LMB tap: WHACK the matey with the mop (if not scrubbing) --- */
+const whackCd = new Map<Char, number>();
+export function mopTap(c: Char) {
+  if (c.mode !== 'deck' || !mopOf(c)) return;
+  if (nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) return;   // that press means "scrub"
+  if ((whackCd.get(c) ?? 0) > 0) return;
+  const other = chars[1 - chars.indexOf(c)];
+  if (!other || !charActive(other) || other.mode !== 'deck' || other.grabbedBy >= 0) return;
+  const dx = other.pos.x - c.pos.x, dz = other.pos.z - c.pos.z;
+  const d = Math.hypot(dx, dz);
+  if (d > CONFIG.whackRange) return;
+  whackCd.set(c, CONFIG.whackCooldown);
+  releaseStation(other);
+  other.knock = Math.max(other.knock, CONFIG.whackKnock);
+  other.vel.x += (dx / (d || 1)) * CONFIG.whackKick;
+  other.vel.z += (dz / (d || 1)) * CONFIG.whackKick;
+  audio.thwack();
+  toast(c.name + ' bonked ' + other.name + ' with the mop!', '#ffd95e');
 }
 
 function breakFree(victim: Char, grabber: Char) {
@@ -102,9 +213,9 @@ function breakFree(victim: Char, grabber: Char) {
   victim.mash = 0;
   grabber.holding = false;
   victim.knock = 0.3;
-  grabber.knock = 0.4;                                   // stagger — the wriggle worked
+  grabber.knock = 0.4;
   const f = headVec(grabber.facing);
-  victim.vel.x = f.x * 2.2; victim.vel.z = f.z * 2.2;    // small pop away
+  victim.vel.x = f.x * 2.2; victim.vel.z = f.z * 2.2;
   toast(victim.name + ' wriggled free!', '#aef7a2');
 }
 
@@ -116,37 +227,62 @@ function throwVictim(grabber: Char, victim: Char) {
   victim.vel.x = f.x * CONFIG.throwForce + grabber.vel.x * 0.5;
   victim.vel.z = f.z * CONFIG.throwForce + grabber.vel.z * 0.5;
   victim.vy = CONFIG.throwArc;
-  victim.jumpY = Math.max(victim.jumpY, 0.45);           // launched: clears the rail even point-blank
-  victim.knock = 0.55;                                   // flailing, no air control
+  victim.jumpY = Math.max(victim.jumpY, 0.45);
+  victim.knock = 0.55;
   toast(grabber.name + ' YEETS ' + victim.name + '!', '#ff8a7a');
 }
 
 /* --- per-frame hands logic (host + solo) --- */
 export function updateHands(dt: number) {
+  for (const [c, cd] of whackCd) whackCd.set(c, cd - dt);
+
+  // thrown mops: arc, bonk, land or go swimming
+  for (const m of mops) {
+    if (!m.on || !m.thrown) continue;
+    m.vy -= 12 * dt;
+    m.x += m.vx * dt;
+    m.z += m.vz * dt;
+    m.h = Math.max(0, m.h + m.vy * dt);
+    // mid-air bonk
+    if (m.h > 0.1 && m.h < 1.9) {
+      for (const c of chars) {
+        if (chars.indexOf(c) === m.thrower) continue;        // your own throw can't bean you
+        if (!charActive(c) || c.mode !== 'deck' || c.grabbedBy >= 0) continue;
+        if (Math.hypot(c.pos.x - m.x, c.pos.z - m.z) < 0.7 && Math.hypot(m.vx, m.vz) > 2) {
+          releaseStation(c);
+          c.knock = Math.max(c.knock, 1.0);
+          c.vel.x += m.vx * 0.45;
+          c.vel.z += m.vz * 0.45;
+          audio.thwack();
+          toast(c.name + ' got beaned by a flying mop!', '#ff8a7a');
+          m.vx *= 0.2; m.vz *= 0.2; m.vy = Math.min(m.vy, 0);
+        }
+      }
+    }
+    if (m.h <= 0) {
+      m.thrown = false;
+      m.vx = 0; m.vz = 0; m.vy = 0;
+      if (Math.abs(m.x) > layout.deckX + 0.4 || Math.abs(m.z) > layout.deckZ + 0.4) respawnMop(m, true);
+    } else if (Math.abs(m.x) > layout.deckX + 3 || Math.abs(m.z) > layout.deckZ + 3) {
+      respawnMop(m, true);
+    }
+  }
+
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
     if (!charActive(c)) continue;
     const ax = charAxes(c);
+    const mine = mopOf(c);
 
-    // carried the mop into the sea? it stays aboard where you left the deck
-    if (c.hasMop && c.mode !== 'deck') {
+    // carried the mop into the sea? it respawns in its bucket
+    if (mine && c.mode !== 'deck') {
       c.hasMop = false;
-      mop.held = -1;
-      mop.x = clamp(mop.x, -layout.deckX, layout.deckX);
-      mop.z = clamp(mop.z, -layout.deckZ, layout.deckZ);
+      respawnMop(mine, false);
     }
+    c.hasMop = !!mopOf(c);
 
-    // mop auto-pickup by walking over it (not right after dropping it)
-    const cd = (dropCd.get(c) ?? 0) - dt;
-    dropCd.set(c, cd);
-    if (c.mode === 'deck' && !c.hasMop && mop.held < 0 && c.grabbedBy < 0 && !c.holding && cd <= 0 &&
-        Math.hypot(c.pos.x - mop.x, c.pos.z - mop.z) < CONFIG.mopPickupR) {
-      c.hasMop = true;
-      mop.held = i;
-    }
-
-    // scrubbing: hold F with the mop near a splat
-    if (c.hasMop && c.mode === 'deck' && ax.h) {
+    // scrubbing: hold LMB with the mop near a splat
+    if (c.hasMop && c.mode === 'deck' && ax.u) {
       const s = nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange);
       if (s) {
         c.scrubT += dt;
@@ -161,19 +297,17 @@ export function updateHands(dt: number) {
     if (c.holding) {
       const victim = chars[1 - i];
       if (!victim || victim.grabbedBy !== i || victim.mode !== 'deck' || c.mode !== 'deck') {
-        c.holding = false;                                  // grab dissolved (overboard etc.)
+        c.holding = false;
         if (victim && victim.grabbedBy === i) victim.grabbedBy = -1;
       } else if (!ax.h) {
-        throwVictim(c, victim);                             // released the key: YEET
+        throwVictim(c, victim);
       } else {
-        // pin the victim in front of the grabber, slightly lifted
         const f = headVec(c.facing);
         victim.pos.x = c.pos.x + f.x * 0.9;
         victim.pos.z = c.pos.z + f.z * 0.9;
         victim.vel.x = 0; victim.vel.z = 0;
         victim.jumpY = 0.22; victim.vy = 0;
-        victim.facing = wrapPi(c.facing + Math.PI);         // face your captor — it's personal
-        // victim struggle drags the pair around at half effect
+        victim.facing = wrapPi(c.facing + Math.PI);
         const va = charAxes(victim);
         if (va.fwd || va.strafe) {
           const n = Math.hypot(va.fwd, va.strafe);
@@ -186,10 +320,36 @@ export function updateHands(dt: number) {
   }
 }
 
+/* visuals for both mops, host AND guest (guest gets mop state from snapshots) */
+export function updateMopVisual(t: number) {
+  for (const m of mops) {
+    m.mesh.visible = m.on;
+    m.bucket.visible = m.on;
+    if (!m.on) continue;
+    if (m.thrown) {
+      m.mesh.position.set(m.x, DECK_Y + m.h, m.z);
+      m.mesh.rotation.set(t * 14 % (Math.PI * 2), Math.atan2(m.vx, m.vz), 0);
+    } else if (m.held >= 0) {
+      const c = chars[m.held];
+      const f = headVec(c.facing);
+      const scrub = c.scrubT > 0 ? Math.sin(t * 16) * 0.25 : 0;
+      m.mesh.position.set(
+        c.pos.x + f.x * 0.42 + scrub * Math.cos(c.facing) * 0.4,
+        DECK_Y + (c.scrubT > 0 ? 0.02 : 0.18),
+        c.pos.z + f.z * 0.42 - scrub * Math.sin(c.facing) * 0.4);
+      m.mesh.rotation.set(c.scrubT > 0 ? 0.9 : 0.35, c.facing, 0);
+    } else {
+      const atBucket = Math.hypot(m.x - m.bucket.position.x, m.z - m.bucket.position.z) < 0.2;
+      m.mesh.position.set(m.x, DECK_Y + (atBucket ? 0.26 : 0.05), m.z);
+      m.mesh.rotation.set(atBucket ? 0.12 : Math.PI / 2 - 0.08, 0.6 + (atBucket ? 0 : 0.8), 0);
+    }
+  }
+}
+
 /* full reset support */
-export function resetHands() {
+export function resetHands(coop: boolean) {
   for (const c of chars) {
     c.hasMop = false; c.grabbedBy = -1; c.holding = false; c.mash = 0; c.scrubT = 0;
   }
-  placeMopHome();
+  resetMops(coop);
 }

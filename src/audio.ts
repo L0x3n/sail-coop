@@ -148,6 +148,27 @@ export function thunder() {
   src.start(t); src.stop(t + 2.4);
 }
 
+export function thwack() {
+  if (!ctx || !master) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  o.type = 'square';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(55, t + 0.09);
+  f.type = 'lowpass'; f.frequency.value = 800;
+  g.gain.setValueAtTime(0.18, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(f).connect(g).connect(master);
+  o.start(t); o.stop(t + 0.13);
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx, 0.08);
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.1, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+  src.connect(ng).connect(master);
+  src.start(t); src.stop(t + 0.08);
+}
+
 export function fishPlop() {
   if (!ctx || !master) return;
   const t = ctx.currentTime;

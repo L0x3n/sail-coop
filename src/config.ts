@@ -66,7 +66,13 @@ export const CONFIG = {
   scrubTime: 1.5,          // seconds of scrubbing to clear one splat
   scrubRange: 0.95,        // the mop reaches splats within this range
   mopCarrySlow: 0.82,      // walk accel multiplier while carrying the mop
-  mopPickupR: 0.65,        // walking this close auto-picks the mop up
+  mopPickupR: 1.25,        // press E this close to pick the mop up
+  mopThrowForce: 8.5,      // horizontal mop launch speed
+  mopThrowArc: 3.2,        // upward mop launch speed
+  whackRange: 1.7,         // mop melee reach (LMB tap)
+  whackKnock: 0.9,         // seconds floored by a bonk
+  whackKick: 4.2,          // shove from a bonk
+  whackCooldown: 0.6,      // seconds between swings
 
   // --- grabbing & throwing (Gang Beasts rule) ---
   grabRange: 1.6,          // how close you must be to grab the other pirate

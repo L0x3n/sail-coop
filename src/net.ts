@@ -4,14 +4,14 @@ import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
 import { boat, chars, env, myChar, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { setBoatPreset } from './shipMesh';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
-import { handsEdge, mop, resetHands } from './hands';
+import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
 import type { BoatPreset } from './types';
 import { inputAxes } from './input';
 import { applyAspect, scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { animateChar } from './pirates';
 import { spawnSplash, spawnWake } from './effects';
-import { releaseStation, resetState, tryToggleStation, localToWorld2 } from './simChars';
+import { releaseStation, resetState, localToWorld2 } from './simChars';
 import { v2 } from './mathUtil';
 import { modeSelEl, netChipEl, netStatusEl, setToastRelay, showDocked, toast } from './hud';
 import type { CharSnap, NetMsg, Snapshot } from './types';
@@ -51,6 +51,7 @@ export function startSolo(p?: BoatPreset) {
   setBoatPreset(chosenBoat);
   setNetRole(null); setGuestHere(false);
   p2.mesh.visible = false;
+  resetHands(false);                 // one pirate, one mop
   beginPlay();
 }
 
@@ -65,6 +66,7 @@ export function startHost(p?: BoatPreset) {
     setBoatPreset(chosenBoat);
     setNetRole('host'); setGuestHere(false);
     p2.mesh.visible = false;
+    resetHands(false);
     beginPlay();
     netChipEl.style.display = 'block';
     netChipEl.textContent = 'Code: ' + code + ' — waiting for your matey…';
@@ -79,6 +81,10 @@ export function startHost(p?: BoatPreset) {
       p2.mode = 'deck'; p2.pos.x = 0.9; p2.pos.z = -1.0;
       p2.vel.x = 0; p2.vel.z = 0; p2.knock = 0; p2.facing = 0;
       p2.mesh.visible = true;
+      mops[1].on = true;                       // second pirate, second mop
+      mops[1].held = -1;
+      mops[1].x = mops[1].bucket.position.x;
+      mops[1].z = mops[1].bucket.position.z;
       netChipEl.textContent = 'Code: ' + code + ' — matey aboard!';
       toast('A matey climbed aboard!', '#aef7a2');
       netSend({ k: 'start', boat: chosenBoat.id });
@@ -89,6 +95,9 @@ export function startHost(p?: BoatPreset) {
       setGuestHere(false);
       releaseStation(p2);
       p2.mesh.visible = false;
+      p2.grabbedBy = -1; p1.holding = false; p2.holding = false;
+      if (mops[1].held >= 0) chars[mops[1].held].hasMop = false;
+      mops[1].on = false;                      // their mop leaves with them
       netChipEl.textContent = 'Code: ' + code + ' — matey left, waiting…';
       toast('Matey disconnected', '#ff8787');
     });
@@ -105,15 +114,18 @@ export function hostOnData(m: NetMsg) {
     p2.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
     p2.netAxes.j = m.a.j ? 1 : 0;
     p2.netAxes.h = m.a.h ? 1 : 0;
+    p2.netAxes.u = m.a.u ? 1 : 0;
     if (typeof m.f === 'number') p2.facing = wrapPi(m.f);
     session.started = true;
   } else if (m.k === 'g') {
-    if (!session.docked && p2.mode === 'deck') tryToggleStation(p2);
+    if (!session.docked && p2.mode === 'deck') pressE(p2);
   } else if (m.k === 'f') {
     handsEdge(p2);
+  } else if (m.k === 'm0') {
+    mopTap(p2);
   } else if (m.k === 'restart?') {
     resetState();
-    resetHands();
+    resetHands(guestHere);
     clearSplats();
     netSend({ k: 'reset' });
   }
@@ -152,7 +164,7 @@ export function guestOnData(m: NetMsg) {
     else removeSplat(m.id);
     return;
   }
-  if (m.k === 'reset') { resetState(); resetHands(); clearSplats(); netT.boat = null; netT.c = [null, null]; return; }
+  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); netT.boat = null; netT.c = [null, null]; return; }
   if (m.k === 's') applySnapshot(m);
 }
 export function applySnapshot(m: Snapshot) {
@@ -165,9 +177,12 @@ export function applySnapshot(m: Snapshot) {
   session.runTime = m.t;
   if (m.d && !session.docked) showDocked(fmtTime(m.t));
   session.docked = m.d;
-  mop.held = m.m.held;
-  mop.x = m.m.x;
-  mop.z = m.m.z;
+  m.m.forEach((ms, i) => {
+    const mp = mops[i];
+    if (!mp) return;
+    mp.on = ms.on; mp.held = ms.held; mp.thrown = ms.thrown;
+    mp.x = ms.x; mp.z = ms.z; mp.h = ms.h;
+  });
   m.c.forEach((cm, i) => {
     const c = chars[i];
     netT.c[i] = cm;
@@ -253,17 +268,18 @@ export function hostNetStep(dt: number) {
       x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station,
       gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT,
     })),
-    m: { x: mop.x, z: mop.z, held: mop.held },
+    m: mops.map(mp => ({ x: mp.x, z: mp.z, h: mp.h, held: mp.held, thrown: mp.thrown, on: mp.on })),
   });
 }
 
 export function sendGrab() { netSend({ k: 'g' }); }
 export function sendHandsEdge() { netSend({ k: 'f' }); }
+export function sendMopTap() { netSend({ k: 'm0' }); }
 
 export function requestRestart() {
   if (netRole === 'guest') { netSend({ k: 'restart?' }); return; }   // ask the host
   resetState();
-  resetHands();
+  resetHands(guestHere);
   clearSplats();
   netT.boat = null; netT.c = [null, null];
   if (netRole === 'host') netSend({ k: 'reset' });
