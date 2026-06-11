@@ -1,6 +1,6 @@
-import { CONFIG, HELM_POS, SAIL_STA, STATION_R } from './config';
+import { CONFIG, STATION_R } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
-import { boat, myChar, session, wind } from './state';
+import { boat, layout, myChar, session, tuning, wind } from './state';
 import { stationTakenBy } from './simChars';
 import { dragLook } from './input';
 import { pierA, dockMidZ } from './world';
@@ -84,7 +84,7 @@ function drawMiniBoat(t: number) {
   ctx.moveTo(0, -34); ctx.quadraticCurveTo(15, -16, 13, 22); ctx.lineTo(-13, 22);
   ctx.quadraticCurveTo(-15, -16, 0, -34); ctx.closePath(); ctx.fill(); ctx.stroke();
   // boom, colored by trim quality (green = drawing well, red/flash = luffing)
-  const power = clamp(boat.sailForce / Math.max(0.01, CONFIG.sailPower * wind.strength), 0, 1);
+  const power = clamp(boat.sailForce / Math.max(0.01, tuning.sailPower * wind.strength), 0, 1);
   let boomCol = power > 0.7 ? '#51cf66' : power > 0.35 ? '#ffd43b' : '#ff6b6b';
   if (boat.luffing && Math.sin(t * 10) > 0) boomCol = '#ff8787';
   ctx.strokeStyle = boomCol; ctx.lineWidth = 3;
@@ -115,9 +115,9 @@ function stationPromptText(c: Char, keyName: string): string {
   }
   if (c.station) return keyName + ' — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL');
   if (!stationTakenBy('helm') &&
-      Math.hypot(c.pos.x - HELM_POS.x, c.pos.z - HELM_POS.z) < STATION_R) return keyName + ' — man the HELM';
+      Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z) < STATION_R) return keyName + ' — man the HELM';
   if (!stationTakenBy('sail') &&
-      Math.hypot(c.pos.x - SAIL_STA.x, c.pos.z - SAIL_STA.z) < STATION_R) return keyName + ' — man the SAIL';
+      Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z) < STATION_R) return keyName + ' — man the SAIL';
   return '';
 }
 

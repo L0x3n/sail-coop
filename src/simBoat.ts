@@ -1,6 +1,6 @@
 import { CONFIG } from './config';
 import { D2R, R2D, clamp, dot2, headVec, lerp, len2, rightVec, smoothstep, wrapPi, fmtTime } from './mathUtil';
-import { boat, charActive, chars, session, wind } from './state';
+import { boat, charActive, chars, env, layout, session, tuning, wind } from './state';
 import { obstacles, pierA, pierB, dockMidZ, dockHalfLen } from './world';
 import { releaseStation } from './simChars';
 import { showDocked, toast } from './hud';
@@ -9,8 +9,9 @@ import { showDocked, toast } from './hud';
 export function updateWind(dt: number, t: number) {
   // smooth deterministic wander, a few degrees per second
   const drift = Math.sin(t * 0.10) * 0.6 + Math.sin(t * 0.037 + 2.1) * 0.4;
-  wind.angle = wrapPi(wind.angle + drift * CONFIG.windWander * D2R * dt);
-  wind.strength = CONFIG.windStrength * (1 + CONFIG.windStrengthWobble * Math.sin(t * 0.13 + 1));
+  const wanderMul = env.weatherId === 2 ? 2.2 : 1;     // squalls swing the wind around
+  wind.angle = wrapPi(wind.angle + drift * CONFIG.windWander * wanderMul * D2R * dt);
+  wind.strength = CONFIG.windStrength * env.windMul * (1 + CONFIG.windStrengthWobble * Math.sin(t * 0.13 + 1));
 }
 
 /* =========================== sailing physics (2D horizontal plane) =========================== */
@@ -29,7 +30,7 @@ export function updateBoat(dt: number) {
   const boomErr = Math.abs(wrapPi(boat.boomAngle - idealBoom));
   // cos falloff hitting zero at 60 degrees of trim error
   const trim = Math.max(0, Math.cos(boomErr * 1.5));
-  boat.sailForce = CONFIG.sailPower * wind.strength * trim * noGoF;
+  boat.sailForce = tuning.sailPower * wind.strength * trim * noGoF;
   // nobody aboard? the sheet slips loose and the sail luffs — the boat
   // coasts to a stop instead of sailing away from swimming players forever
   const crewAboard = chars.some(c => charActive(c) && c.mode === 'deck');
@@ -41,9 +42,9 @@ export function updateBoat(dt: number) {
 
   // forward: sail thrust vs quadratic+linear drag + turning scrub
   const af = boat.sailForce
-    - CONFIG.fwdDragQuad * vf * Math.abs(vf)
+    - tuning.fwdDragQuad * vf * Math.abs(vf)
     - CONFIG.fwdDragLin * vf
-    - CONFIG.turnDrag * Math.abs(boat.angVel) * vf;
+    - tuning.turnDrag * Math.abs(boat.angVel) * vf;
   // lateral: strong keel damping + slight leeway from crosswind
   const windLat = dot2(windV, rgt);
   const al = -CONFIG.latResist * vl + CONFIG.leeway * wind.strength * windLat * 0.1;
@@ -57,8 +58,8 @@ export function updateBoat(dt: number) {
   boat.vel.x += ax * dt; boat.vel.z += az * dt;
 
   // yaw: rudder authority scales with speed through water (useless at rest)
-  const angAcc = boat.rudder * CONFIG.rudderAuthority * vf
-    - CONFIG.yawDamp * boat.angVel;
+  const angAcc = boat.rudder * tuning.rudderAuthority * vf
+    - tuning.yawDamp * boat.angVel;
   boat.lastAngAccel = angAcc;
   boat.angVel += angAcc * dt;
   boat.yaw = wrapPi(boat.yaw + boat.angVel * dt);
@@ -69,7 +70,7 @@ export function updateBoat(dt: number) {
   // heel: crosswind power + turning lean, eased toward target
   const speed = len2(boat.vel);
   const heelTarget = clamp(
-    Math.sign(d || 1) * CONFIG.maxHeel * (wind.strength / CONFIG.windStrength) * trim * noGoF * Math.abs(Math.sin(d))
+    Math.sign(d || 1) * tuning.maxHeel * (wind.strength / CONFIG.windStrength) * trim * noGoF * Math.abs(Math.sin(d))
     + boat.angVel * vf * CONFIG.turnHeel * 0.1, -0.4, 0.4);
   boat.heel = lerp(boat.heel, heelTarget, clamp(CONFIG.heelLerp * dt, 0, 1));
 
@@ -82,9 +83,10 @@ function collideBoat() {
   const all = obstacles.slice();
   // pier as a line of circles
   for (let z = pierA.z; z <= pierB.z; z += 3) all.push({ x: pierA.x, z, r: 4.0 });
+  const hullPad = (layout.scale - 1) * 1.6;            // bigger boats touch sooner
   for (const o of all) {
     const dx = boat.pos.x - o.x, dz = boat.pos.z - o.z;
-    const dist = Math.hypot(dx, dz), minD = o.r;
+    const dist = Math.hypot(dx, dz), minD = o.r + hullPad;
     if (dist >= minD || dist === 0) continue;
     const nx = dx / dist, nz = dz / dist;
     const vn = boat.vel.x * nx + boat.vel.z * nz;     // closing if negative

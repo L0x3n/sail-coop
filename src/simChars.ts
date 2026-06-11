@@ -1,6 +1,6 @@
-import { CONFIG, DECK_X, DECK_Y, DECK_Z, GAPS, HELM_POS, HULL_L, HULL_W, RAIL_H, SAIL_STA, STATION_R } from './config';
+import { CONFIG, DECK_Y, RAIL_H, STATION_R } from './config';
 import { D2R, clamp, headVec, lerp, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, chars, myChar, netRole, p2, session } from './state';
+import { boat, chars, env, layout, myChar, netRole, p2, session, tuning } from './state';
 import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { heelGroup } from './shipMesh';
@@ -29,8 +29,8 @@ export function charAxes(c: Char): Axes {
 /* =========================== stations =========================== */
 export function nearestStation(c: Char): 'helm' | 'sail' | null {
   if (c.mode !== 'deck') return null;
-  const dh = Math.hypot(c.pos.x - HELM_POS.x, c.pos.z - HELM_POS.z);
-  const dm = Math.hypot(c.pos.x - SAIL_STA.x, c.pos.z - SAIL_STA.z);
+  const dh = Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z);
+  const dm = Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z);
   if (dh < STATION_R && dh <= dm) return 'helm';
   if (dm < STATION_R) return 'sail';
   return null;
@@ -44,7 +44,7 @@ export function tryToggleStation(c: Char) {
   const st = nearestStation(c);
   if (st && !stationTakenBy(st)) {
     c.station = st;
-    const sp = st === 'helm' ? HELM_POS : SAIL_STA;
+    const sp = st === 'helm' ? layout.helm : layout.sailSta;
     c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
   }
 }
@@ -70,14 +70,14 @@ export function climbAboard(c: Char) {
   c.mode = 'deck';
   scene.remove(c.mesh);
   heelGroup.add(c.mesh);
-  c.pos = v2(clamp(lp.x, -DECK_X + 0.2, DECK_X - 0.2), clamp(lp.z, -DECK_Z + 0.2, DECK_Z - 0.2));
+  c.pos = v2(clamp(lp.x, -layout.deckX + 0.2, layout.deckX - 0.2), clamp(lp.z, -layout.deckZ + 0.2, layout.deckZ - 0.2));
   c.facing = wrapPi(c.facing - boat.yaw);   // world facing -> boat-local facing
   c.vel = v2(); c.knock = 0.5; c.jumpY = 0; c.vy = 0;
   const w = localToWorld2(c.pos);
   spawnSplash(w.x, w.z, false);
   toast(c.name + ' back aboard!', '#aef7a2');
 }
-const inGap = (z: number) => GAPS.some(g => z > g.z0 && z < g.z1);
+const inGap = (z: number) => layout.gaps.some(g => z > g.z0 && z < g.z1);
 
 /* drifted past the leash: the sea spits you back on deck */
 export function washAboard(c: Char) {
@@ -109,7 +109,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
         boat.boomAngle = clamp(boat.boomAngle + strafe * CONFIG.boomRate * D2R * dt,
           -CONFIG.boomMax * D2R, CONFIG.boomMax * D2R);
       }
-      const sp = c.station === 'helm' ? HELM_POS : SAIL_STA;
+      const sp = c.station === 'helm' ? layout.helm : layout.sailSta;
       c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
       c.animMoving = false;
       c.mesh.position.set(c.pos.x, DECK_Y, c.pos.z);
@@ -162,10 +162,11 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     sx += (w * w * c.pos.x - wd * c.pos.z) * CONFIG.inertiaScale;
     sz += (w * w * c.pos.z + wd * c.pos.x) * CONFIG.inertiaScale;
     // heel: downhill is +x when (internal) starboard dips
-    sx += Math.sin(boat.heel) * CONFIG.heelSlide;
-    // gentle wave wobble so standing still is never perfectly stable
-    sx += Math.sin(t * 0.9 + ci * 2.1) * CONFIG.wobbleSlide;
-    sz += Math.sin(t * 0.73 + 1.7 + ci) * CONFIG.wobbleSlide;
+    sx += Math.sin(boat.heel) * tuning.heelSlide;
+    // wave wobble scales with the sea state — a heavy swell makes footing genuinely bad
+    const wob = CONFIG.wobbleSlide * env.swell;
+    sx += Math.sin(t * 0.9 + ci * 2.1) * wob;
+    sz += Math.sin(t * 0.73 + 1.7 + ci) * wob;
 
     const slideMag = Math.hypot(sx, sz);
     if (slideMag > CONFIG.stumbleThresh && c.knock <= 0 && grounded) c.knock = CONFIG.knockTime;
@@ -176,19 +177,19 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
 
     // ---- rails & gangway gaps (a good jump clears the rail anywhere) ----
     const overRail = c.jumpY > RAIL_H;
-    if (Math.abs(c.pos.x) > DECK_X) {
+    if (Math.abs(c.pos.x) > layout.deckX) {
       if (inGap(c.pos.z) || overRail) {
-        if (Math.abs(c.pos.x) > DECK_X + 0.55) { goOverboard(c); return; }
+        if (Math.abs(c.pos.x) > layout.deckX + 0.55) { goOverboard(c); return; }
       } else {
-        c.pos.x = Math.sign(c.pos.x) * DECK_X;
+        c.pos.x = Math.sign(c.pos.x) * layout.deckX;
         c.vel.x *= -0.2;
       }
     }
-    if (Math.abs(c.pos.z) > DECK_Z) {
+    if (Math.abs(c.pos.z) > layout.deckZ) {
       if (overRail) {
-        if (Math.abs(c.pos.z) > DECK_Z + 0.55) { goOverboard(c); return; }
+        if (Math.abs(c.pos.z) > layout.deckZ + 0.55) { goOverboard(c); return; }
       } else {
-        c.pos.z = Math.sign(c.pos.z) * DECK_Z;
+        c.pos.z = Math.sign(c.pos.z) * layout.deckZ;
         c.vel.z *= -0.2;
       }
     }
@@ -255,7 +256,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     // climb back up ONLY when deliberately swimming INTO the hull
     const lp = worldToLocal2(c.pos);
     if (c.knock <= 0 && swimming &&
-        Math.abs(lp.x) < HULL_W / 2 + 0.8 && Math.abs(lp.z) < HULL_L / 2 + 0.8) {
+        Math.abs(lp.x) < layout.hullW / 2 + 0.8 && Math.abs(lp.z) < layout.hullL / 2 + 0.8) {
       const tbx = boat.pos.x - c.pos.x, tbz = boat.pos.z - c.pos.z;
       const tbl = Math.hypot(tbx, tbz) || 1;
       if ((mx * tbx + mz * tbz) / tbl > 0.25) climbAboard(c);

@@ -46,15 +46,27 @@ export interface Snapshot {
   k: 's';
   b: { x: number; z: number; yaw: number; vx: number; vz: number; av: number;
        rud: number; boom: number; heel: number; sf: number; luff: boolean };
-  w: { a: number; s: number };
+  w: { a: number; s: number; wid: number; wl: number };
   t: number; d: boolean;
   c: CharSnap[];
 }
 export type NetMsg =
   | Snapshot
-  | { k: 'start' }
+  | { k: 'start'; boat: string }
   | { k: 'i'; a: Axes; f: number }
   | { k: 'g' }
   | { k: 'toast'; x: string; col?: string }
+  | { k: 'fx'; fx: 'poop'; x: number; z: number }
   | { k: 'reset' }
   | { k: 'restart?' };
+
+export interface BoatPreset {
+  id: string;
+  name: string;
+  desc: string;
+  scale: number;
+  tune: Partial<{
+    sailPower: number; rudderAuthority: number; turnDrag: number;
+    maxHeel: number; heelSlide: number; fwdDragQuad: number; yawDamp: number;
+  }>;
+}

@@ -1,7 +1,10 @@
 import Peer, { DataConnection } from 'peerjs';
-import { DECK_Y } from './config';
+import { BOATS, DECK_Y } from './config';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, myChar, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { boat, chars, env, myChar, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { setBoatPreset } from './shipMesh';
+import { placeSplat, setFxRelay } from './critters';
+import type { BoatPreset } from './types';
 import { inputAxes } from './input';
 import { applyAspect, scene } from './scene';
 import { heelGroup } from './shipMesh';
@@ -26,8 +29,11 @@ const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const peerId = (code: string) => 'sailcoop-v1-' + code;
 function netSend(m: NetMsg) { if (conn && conn.open) { try { conn.send(m); } catch { /* gone */ } } }
 
-// host toasts get relayed to the matey
+// host toasts + gull hits get relayed to the matey
 setToastRelay((text, col) => { if (netRole === 'host') netSend({ k: 'toast', x: text, col }); });
+setFxRelay((x, z) => { if (netRole === 'host') netSend({ k: 'fx', fx: 'poop', x, z }); });
+
+let chosenBoat: BoatPreset = BOATS[1];
 
 export function beginPlay() {
   session.inMenu = false;
@@ -36,19 +42,23 @@ export function beginPlay() {
   session.started = false;
   applyAspect();
 }
-export function startSolo() {
+export function startSolo(p?: BoatPreset) {
+  if (p) chosenBoat = p;
+  setBoatPreset(chosenBoat);
   setNetRole(null); setGuestHere(false);
   p2.mesh.visible = false;
   beginPlay();
 }
 
-export function startHost() {
+export function startHost(p?: BoatPreset) {
+  if (p) chosenBoat = p;
   let code = '';
   for (let i = 0; i < 4; i++) code += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];
   netStatusEl.textContent = 'Raising the flag…';
   peer = new Peer(peerId(code));
   peer.on('open', () => {
     netCode = code;
+    setBoatPreset(chosenBoat);
     setNetRole('host'); setGuestHere(false);
     p2.mesh.visible = false;
     beginPlay();
@@ -67,7 +77,7 @@ export function startHost() {
       p2.mesh.visible = true;
       netChipEl.textContent = 'Code: ' + code + ' — matey aboard!';
       toast('A matey climbed aboard!', '#aef7a2');
-      netSend({ k: 'start' });
+      netSend({ k: 'start', boat: chosenBoat.id });
     });
     conn.on('data', d => hostOnData(d as NetMsg));
     conn.on('close', () => {
@@ -118,6 +128,7 @@ const netT: { boat: Snapshot['b'] | null; c: (CharSnap | null)[] } = { boat: nul
 export function guestOnData(m: NetMsg) {
   if (!m || typeof m !== 'object') return;
   if (m.k === 'start') {
+    setBoatPreset(BOATS.find(b => b.id === m.boat) ?? BOATS[1]);
     setNetRole('guest');
     p1.mesh.visible = true; p2.mesh.visible = true;
     p2.pos.x = 0.9; p2.pos.z = -1.0;
@@ -127,6 +138,7 @@ export function guestOnData(m: NetMsg) {
     return;
   }
   if (m.k === 'toast') { toast(m.x, m.col); return; }
+  if (m.k === 'fx') { placeSplat(m.x, m.z); return; }
   if (m.k === 'reset') { resetState(); netT.boat = null; netT.c = [null, null]; return; }
   if (m.k === 's') applySnapshot(m);
 }
@@ -136,6 +148,7 @@ export function applySnapshot(m: Snapshot) {
   boat.rudder = m.b.rud; boat.boomAngle = m.b.boom; boat.heel = m.b.heel;
   boat.sailForce = m.b.sf; boat.luffing = m.b.luff;
   wind.angle = m.w.a; wind.strength = m.w.s;
+  if (m.w.wid !== env.weatherId) { env.weatherId = (m.w.wid as 0 | 1 | 2) ?? 0; env.weatherLerp = 0; }
   session.runTime = m.t;
   if (m.d && !session.docked) showDocked(fmtTime(m.t));
   session.docked = m.d;
@@ -214,7 +227,7 @@ export function hostNetStep(dt: number) {
     k: 's',
     b: { x: boat.pos.x, z: boat.pos.z, yaw: boat.yaw, vx: boat.vel.x, vz: boat.vel.z, av: boat.angVel,
          rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing },
-    w: { a: wind.angle, s: wind.strength },
+    w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp },
     t: session.runTime, d: session.docked,
     c: chars.map(c => ({ x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station })),
   });

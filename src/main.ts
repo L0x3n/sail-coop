@@ -1,11 +1,11 @@
 import './style.css';
-import { CONFIG, HULL_L } from './config';
+import { BOATS, CONFIG } from './config';
 import { clamp, len2, v2, wrapPi } from './mathUtil';
-import { boat, charActive, chars, myChar, netRole, guestHere, p1, p2, registerChars, session, wind } from './state';
-import { keys, pressedQueue, inputAxes } from './input';
+import { boat, charActive, chars, env, layout, myChar, netRole, guestHere, p1, p2, registerChars, session, wind } from './state';
+import { keys, pressedQueue } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
-import { fancyUniforms, fancyWater, fancyWaterMesh, flatWater, setWaterQuality, updateWater } from './water';
+import { fancyUniforms, fancyWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
 import { buildWorld, islandPos } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar } from './pirates';
@@ -13,12 +13,15 @@ import { spawnDroplets, spawnWake, updateSplash, updateStreaks, updateWake } fro
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
-import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn } from './hud';
+import { updateWeatherHost, updateWeatherVisuals } from './weather';
+import { updateCritters } from './critters';
+import { drawMap, mapOpen, toggleMap } from './map';
+import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
   netCode, requestRestart, sendGrab, startHost, startJoin, startSolo,
 } from './net';
-import type { Char } from './types';
+import type { BoatPreset, Char } from './types';
 
 /* =========================== characters =========================== */
 function makeChar(name: string, shirt: number, hat: number, lx: number, lz: number): Char {
@@ -50,7 +53,8 @@ function handleLocalKeys() {
     const code = pressedQueue.shift()!;
     if (session.inMenu) continue;
     session.started = true;
-    if (code === 'KeyQ') setWaterQuality(!fancyWater);
+    if (code === 'KeyQ') toast('Water: ' + cycleWater(), '#74c0fc');
+    if (code === 'KeyM') toggleMap();
     if (code === 'KeyE' && !session.docked && myChar().mode === 'deck') {
       if (netRole === 'guest') sendGrab();   // host owns the stations
       else tryToggleStation(p1);
@@ -62,6 +66,7 @@ function handleLocalKeys() {
 function physicsStep(dt: number) {
   session.simT += dt;
   handleLocalKeys();
+  updateWeatherHost(dt);
   updateWind(dt, session.simT);
   if (!session.docked) {
     updateBoat(dt);
@@ -80,13 +85,13 @@ function visualStep(dt: number) {
   wakeTimer -= dt;
   if (speed > 1.2 && wakeTimer <= 0) {
     wakeTimer = 0.09;
-    const stern = localToWorld2(v2(0, -HULL_L / 2));
-    spawnWake(stern.x, stern.z, boat.yaw, 1.2 + speed * 0.12);
+    const stern = localToWorld2(v2(0, -layout.hullL / 2));
+    spawnWake(stern.x, stern.z, boat.yaw, (1.2 + speed * 0.12) * layout.scale);
   }
   sprayTimer -= dt;
   if (speed > 5.5 && sprayTimer <= 0) {
     sprayTimer = 0.13;
-    const bow = localToWorld2(v2(0, HULL_L / 2 - 0.3));
+    const bow = localToWorld2(v2(0, layout.hullL / 2 - 0.3));
     spawnDroplets(bow.x, bow.z, 3, 2.4, 2.6);
   }
   // sun (shadow box), sky dome, clouds and gulls follow the action
@@ -115,9 +120,11 @@ function visualStep(dt: number) {
   updateSplash(dt);
   updateStreaks(dt, t, boat.pos.x, boat.pos.z, wind.angle, wind.strength);
   updateWater(t, boat.pos.x, boat.pos.z);
+  updateWeatherVisuals(dt);
+  updateCritters(dt);
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
-  audio.updateAudio(dt, wind.strength, speed);
+  audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));
 }
 
 /* =========================== render =========================== */
@@ -143,13 +150,23 @@ function frame(now: number) {
   }
   visualStep(dt);
   drawHud(session.simT);
+  drawMap();
   renderViews();
 }
 requestAnimationFrame(frame);
 
 /* =========================== UI wiring =========================== */
-btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(); });
-btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(); });
+let chosenBoat: BoatPreset = BOATS[1];
+const boatCards = Array.from(document.querySelectorAll<HTMLButtonElement>('.boatcard'));
+for (const card of boatCards) {
+  card.addEventListener('click', () => {
+    boatCards.forEach(b => b.classList.remove('sel'));
+    card.classList.add('sel');
+    chosenBoat = BOATS.find(b => b.id === card.dataset.boat) ?? BOATS[1];
+  });
+}
+btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(chosenBoat); });
+btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(chosenBoat); });
 btnJoin.addEventListener('click', () => { audio.ensureAudio(); startJoin(joinCodeEl.value); });
 restartBtn.addEventListener('click', () => requestRestart());
 applyAspect();
@@ -163,8 +180,10 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
+  env, layout, BOATS,
   get netCode() { return netCode; },
-  get fancyWater() { return fancyWater; },
+  get waterMode() { return waterMode; },
+  get mapOpen() { return mapOpen; },
   get netRole() { return netRole; },
   get guestHere() { return guestHere; },
   get inMenu() { return session.inMenu; },
@@ -185,7 +204,6 @@ window.__sail = {
       visualStep(1 / 60);
     }
   },
-  render() { drawHud(session.simT); renderViews(); },
+  render() { drawHud(session.simT); drawMap(); renderViews(); },
   setPaused(p: boolean) { window.__sailPaused = p; },
 };
-void inputAxes;

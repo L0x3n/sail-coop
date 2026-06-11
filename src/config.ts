@@ -84,3 +84,23 @@ export const HELM_POS = v2(0, -2.65);
 export const MAST_POS = v2(0, 0.6);
 export const SAIL_STA = v2(0, 1.45);                   // sail-trim spot, ahead of the mast
 export const STATION_R = 1.15;
+
+/* --- pickable boats: same sim, different size & manners --- */
+import type { BoatPreset } from './types';
+export const BOATS: BoatPreset[] = [
+  {
+    id: 'skiff', name: 'Skiff', scale: 0.72,
+    desc: 'Tiny & nimble — turns on a coin, tips like one too',
+    tune: { sailPower: 0.215, rudderAuthority: 0.24, turnDrag: 0.34, maxHeel: 0.31, heelSlide: 30, fwdDragQuad: 0.036, yawDamp: 1.1 },
+  },
+  {
+    id: 'sloop', name: 'Sloop', scale: 1.0,
+    desc: 'The trusty all-rounder',
+    tune: {},
+  },
+  {
+    id: 'galleon', name: 'Galleon', scale: 1.42,
+    desc: 'Huge & stately — plan your turns a week ahead',
+    tune: { sailPower: 0.27, rudderAuthority: 0.085, turnDrag: 0.52, maxHeel: 0.17, heelSlide: 20, fwdDragQuad: 0.047, yawDamp: 1.45 },
+  },
+];

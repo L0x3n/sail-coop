@@ -1,6 +1,56 @@
 import { v2 } from './mathUtil';
-import { CONFIG } from './config';
+import { CONFIG, DECK_X, DECK_Z, GAPS, HULL_L, HULL_W } from './config';
 import type { Char } from './types';
+
+/* --- boat layout (scaled by the chosen boat preset) --- */
+export const layout = {
+  scale: 1,
+  deckX: DECK_X, deckZ: DECK_Z,
+  hullW: HULL_W, hullL: HULL_L,
+  helm: v2(0, -2.65),
+  sailSta: v2(0, 1.45),
+  gaps: GAPS.map(g => ({ ...g })),
+};
+export function applyLayoutScale(S: number) {
+  layout.scale = S;
+  layout.deckX = DECK_X * S;
+  layout.deckZ = DECK_Z * S;
+  layout.hullW = HULL_W * S;
+  layout.hullL = HULL_L * S;
+  layout.helm = v2(0, -2.65 * S);
+  layout.sailSta = v2(0, 1.45 * S);
+  layout.gaps = GAPS.map(g => ({ z0: g.z0 * S, z1: g.z1 * S }));
+}
+
+/* --- per-boat handling numbers (preset overrides on top of CONFIG) --- */
+export const tuning = {
+  sailPower: CONFIG.sailPower,
+  rudderAuthority: CONFIG.rudderAuthority,
+  turnDrag: CONFIG.turnDrag,
+  maxHeel: CONFIG.maxHeel,
+  heelSlide: CONFIG.heelSlide,
+  fwdDragQuad: CONFIG.fwdDragQuad,
+  yawDamp: CONFIG.yawDamp,
+};
+export function applyTuning(t: Partial<typeof tuning>) {
+  tuning.sailPower = CONFIG.sailPower;
+  tuning.rudderAuthority = CONFIG.rudderAuthority;
+  tuning.turnDrag = CONFIG.turnDrag;
+  tuning.maxHeel = CONFIG.maxHeel;
+  tuning.heelSlide = CONFIG.heelSlide;
+  tuning.fwdDragQuad = CONFIG.fwdDragQuad;
+  tuning.yawDamp = CONFIG.yawDamp;
+  Object.assign(tuning, t);
+}
+
+/* --- environment: weather + sea state (host-authoritative, synced) --- */
+export const env = {
+  weatherId: 0 as 0 | 1 | 2,   // 0 sunny, 1 overcast, 2 squall
+  weatherLerp: 0,              // 0..1 ease into the current weather
+  windMul: 1,
+  swell: 1,                    // wave/bob multiplier (weather x open-sea x AAA water)
+  darkness: 0,
+};
 
 /* =========================== game state =========================== */
 export const boat = {

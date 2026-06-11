@@ -13,7 +13,7 @@ window.addEventListener('keydown', e => {
   if (!keys[e.code]) pressedQueue.push(e.code);
   keys[e.code] = true;
   ensureAudio();
-  if (e.code === 'KeyM') toggleMute();
+  if (e.code === 'KeyN') toggleMute();   // M is the map now
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 

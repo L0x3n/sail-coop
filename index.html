@@ -8,7 +8,8 @@
 <body>
 <div id="cheats" class="hud">
   <b>WASD</b> move &nbsp;·&nbsp; <b>mouse</b> look (click or drag) &nbsp;·&nbsp; <b>SPACE</b> jump &nbsp;·&nbsp; <b>E</b> station<br>
-  At <b>HELM</b>: A/D = rudder &nbsp;·&nbsp; At <b>SAIL</b>: A/D = boom &nbsp;·&nbsp; <b>Q</b> water &nbsp;·&nbsp; <b>M</b> sound<br>
+  At <b>HELM</b>: A/D = rudder &nbsp;·&nbsp; At <b>SAIL</b>: A/D = boom<br>
+  <b>M</b> map &nbsp;·&nbsp; <b>Q</b> water (flat/fancy/AAA) &nbsp;·&nbsp; <b>N</b> sound<br>
   Sail to the island pier &amp; stop alongside it. You can't sail straight upwind — tack!
 </div>
 <div id="topbar" class="hud">
@@ -25,12 +26,18 @@
 <div id="promptP1" class="sideprompt"></div>
 <div id="netchip" class="hud"></div>
 <div id="lookHint" class="hud">click to capture the mouse — or hold &amp; drag to look &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; SPACE jump</div>
-<div id="qnote" class="hud"><b>Q</b>: water quality &nbsp;·&nbsp; <b>M</b>: sound</div>
+<div id="qnote" class="hud"><b>M</b>: map &nbsp;·&nbsp; <b>Q</b>: water &nbsp;·&nbsp; <b>N</b>: sound</div>
+<div id="mapWrap"><canvas id="bigmap" width="560" height="560"></canvas></div>
 <div id="modeSelect">
   <h1>SAIL TOGETHER!</h1>
   <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
     tack upwind, dock at the island pier.<br>
     Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
+  <div class="boatrow">
+    <button class="boatcard" data-boat="skiff"><b>Skiff</b><span>tiny &amp; nimble<br>tips like a coin</span></button>
+    <button class="boatcard sel" data-boat="sloop"><b>Sloop</b><span>the trusty<br>all-rounder</span></button>
+    <button class="boatcard" data-boat="galleon"><b>Galleon</b><span>huge &amp; stately<br>turns next week</span></button>
+  </div>
   <button id="btnSolo">Solo — singlehand her</button>
   <button id="btnHost">Host online co-op</button>
   <div class="joinrow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a matey</button></div>

@@ -5,7 +5,13 @@ import { scene, sun, SKY } from './scene';
    Two interchangeable surfaces (Q toggles). Purely cosmetic — hull
    physics never reads the water. Both follow the boat (snapped to a
    grid so the surface pattern stays world-anchored). */
-export let fancyWater = localStorage.getItem('sail.water') !== 'flat';
+/* water modes: 0 = flat, 1 = fancy, 2 = AAA (towering swell that rocks the deck) */
+export let waterMode = (() => {
+  const m = parseInt(localStorage.getItem('sail.waterMode') ?? '1', 10);
+  return (m >= 0 && m <= 2 ? m : 1) as 0 | 1 | 2;
+})();
+export const WATER_MODE_NAMES = ['FLAT', 'FANCY', 'AAA'];
+export let fancyWater = waterMode > 0;
 const WATER_SIZE = 1400;
 
 /* --- flat water: solid lambert plane with a gentle CPU sine swell --- */
@@ -28,6 +34,7 @@ function updateFlatWater(t: number, cx: number, cz: number) {
 /* --- fancy water: Gerstner-wave shader with ripples, SSS, glitter, foam --- */
 export const fancyUniforms = {
   uTime: { value: 0 },
+  uSwell: { value: 1.0 },
   uOffset: { value: new THREE.Vector2(0, 0) },
   uSunDir: { value: sun.position.clone().normalize() },
   uCamPos: { value: new THREE.Vector3() },
@@ -39,7 +46,7 @@ export const fancyUniforms = {
 const fancyMat = new THREE.ShaderMaterial({
   uniforms: fancyUniforms,
   vertexShader: `
-    uniform float uTime; uniform vec2 uOffset;
+    uniform float uTime; uniform float uSwell; uniform vec2 uOffset;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
       float k = 6.28318 / len;
@@ -57,10 +64,10 @@ const fancyMat = new THREE.ShaderMaterial({
       vec3 tang = vec3(1.0,0.0,0.0), binc = vec3(0.0,0.0,1.0);
       vec3 base = p;
       vec3 off = vec3(0.0);
-      off += gerstner(vec2( 1.0, 0.3), 0.16, 26.0, base, tang, binc);
-      off += gerstner(vec2(-0.6, 1.0), 0.14, 15.0, base, tang, binc);
-      off += gerstner(vec2( 0.9,-0.8), 0.10,  8.0, base, tang, binc);
-      off += gerstner(vec2( 0.2, 1.0), 0.08,  4.5, base, tang, binc);
+      off += gerstner(vec2( 1.0, 0.3), 0.16 * uSwell, 26.0 + 14.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2(-0.6, 1.0), 0.14 * uSwell, 15.0 + 8.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2( 0.9,-0.8), 0.10 * uSwell,  8.0, base, tang, binc);
+      off += gerstner(vec2( 0.2, 1.0), 0.08 * uSwell,  4.5, base, tang, binc);
       p += off;
       p.xz -= uOffset;
       vCrest = off.y;
@@ -113,10 +120,19 @@ export function updateWater(t: number, cx: number, cz: number) {
   }
 }
 
-export function setWaterQuality(fancy: boolean) {
-  fancyWater = fancy;
-  fancyWaterMesh.visible = fancy;
-  flatWater.visible = !fancy;
-  localStorage.setItem('sail.water', fancy ? 'fancy' : 'flat');
+export function setWaterMode(m: 0 | 1 | 2) {
+  waterMode = m;
+  fancyWater = m > 0;
+  fancyWaterMesh.visible = fancyWater;
+  flatWater.visible = !fancyWater;
+  localStorage.setItem('sail.waterMode', String(m));
 }
-setWaterQuality(fancyWater);
+export function cycleWater(): string {
+  setWaterMode(((waterMode + 1) % 3) as 0 | 1 | 2);
+  return WATER_MODE_NAMES[waterMode];
+}
+/* combined sea state (weather x open-sea x AAA), clamped before self-intersection */
+export function setSwell(v: number) {
+  fancyUniforms.uSwell.value = Math.min(1.9, Math.max(0.55, v));
+}
+setWaterMode(waterMode);
