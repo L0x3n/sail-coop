@@ -1,0 +1,47 @@
+html, body { margin: 0; padding: 0; overflow: hidden; background: #0a2a4a; height: 100%; }
+canvas.webgl { display: block; }
+.hud { position: fixed; color: #fff; font-family: "Consolas", "Courier New", monospace;
+       text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; user-select: none; z-index: 10; }
+#cheats { left: 10px; top: 10px; font-size: 12px; line-height: 1.5;
+          background: rgba(0,20,40,.55); padding: 8px 12px; border-radius: 8px; }
+#cheats b { font-size: 13px; }
+#topbar { top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px;
+          align-items: center; background: rgba(0,20,40,.55); padding: 6px 14px; border-radius: 10px; }
+#topbar .col { text-align: center; font-size: 12px; }
+#topbar .big { font-size: 18px; font-weight: bold; }
+#timer { font-size: 22px; font-weight: bold; min-width: 80px; }
+#msg { left: 50%; top: 42%; transform: translate(-50%,-50%); text-align: center; display: none; }
+#msg h1 { font-size: 46px; margin: 0 0 8px 0; color: #aef7a2; }
+#msg p  { font-size: 20px; margin: 0 0 16px 0; }
+#msg button { pointer-events: auto; font-size: 20px; font-family: inherit; padding: 10px 26px;
+              border-radius: 10px; border: 0; background: #2f9e44; color: #fff; cursor: pointer; }
+#msg button:hover { background: #37b24d; }
+#toast { left: 50%; top: 18%; transform: translateX(-50%); font-size: 26px; font-weight: bold;
+         color: #ffe066; opacity: 0; transition: opacity .3s; }
+.sideprompt { position: fixed; bottom: 12%; left: 50%; transform: translateX(-50%);
+         font-family: Consolas, monospace; font-weight: bold; font-size: 16px; color: #fff;
+         background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.6);
+         padding: 4px 12px; border-radius: 8px; display: none; pointer-events: none;
+         z-index: 11; white-space: nowrap; }
+#netchip { right: 10px; top: 10px; font-size: 14px; font-weight: bold;
+           background: rgba(0,20,40,.6); padding: 6px 12px; border-radius: 8px; display: none; }
+#lookHint { left: 50%; top: 58%; transform: translateX(-50%); font-size: 15px;
+            background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 8px; display: none; }
+#qnote { right: 10px; bottom: 10px; font-size: 12px; opacity: .85;
+         background: rgba(0,20,40,.55); padding: 5px 10px; border-radius: 8px; }
+#modeSelect { position: fixed; inset: 0; background: rgba(4,18,34,.85); display: flex;
+              flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+              z-index: 30; color: #fff; font-family: Consolas, monospace; text-align: center;
+              pointer-events: auto; }
+#modeSelect h1 { font-size: 38px; margin: 0; color: #ffd95e; }
+#modeSelect .sub { font-size: 15px; opacity: .85; max-width: 580px; line-height: 1.5; }
+#modeSelect button { font-size: 19px; font-family: inherit; padding: 13px 28px; min-width: 420px;
+                     border-radius: 12px; border: 2px solid rgba(255,255,255,.35);
+                     background: #1d4ed8; color: #fff; cursor: pointer; }
+#modeSelect button:hover { background: #2563eb; }
+#modeSelect input { font-size: 22px; font-family: inherit; padding: 11px; width: 130px;
+                    text-transform: uppercase; text-align: center; letter-spacing: 6px;
+                    border-radius: 12px; border: 2px solid rgba(255,255,255,.35);
+                    background: rgba(255,255,255,.08); color: #fff; }
+.joinrow { display: flex; gap: 10px; }
+.joinrow button { min-width: 0; }

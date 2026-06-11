@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sail Together! — co-op sailing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<div id="cheats" class="hud">
+  <b>WASD</b> move &nbsp;·&nbsp; <b>mouse</b> look (click or drag) &nbsp;·&nbsp; <b>SPACE</b> jump &nbsp;·&nbsp; <b>E</b> station<br>
+  At <b>HELM</b>: A/D = rudder &nbsp;·&nbsp; At <b>SAIL</b>: A/D = boom &nbsp;·&nbsp; <b>Q</b> water &nbsp;·&nbsp; <b>M</b> sound<br>
+  Sail to the island pier &amp; stop alongside it. You can't sail straight upwind — tack!
+</div>
+<div id="topbar" class="hud">
+  <div class="col"><canvas id="compass" width="90" height="90"></canvas><div id="windtxt">Wind</div></div>
+  <div class="col"><div class="big" id="speed">0.0</div><div>speed</div><div class="big" id="timer">0:00</div></div>
+  <div class="col"><canvas id="miniboat" width="110" height="110"></canvas><div id="piertxt">trim / rudder</div></div>
+</div>
+<div id="msg" class="hud">
+  <h1 id="msgTitle">DOCKED!</h1>
+  <p id="msgText">Time: 0:00</p>
+  <button id="restartBtn">Sail again</button>
+</div>
+<div id="toast" class="hud"></div>
+<div id="promptP1" class="sideprompt"></div>
+<div id="netchip" class="hud"></div>
+<div id="lookHint" class="hud">click to capture the mouse — or hold &amp; drag to look &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; SPACE jump</div>
+<div id="qnote" class="hud"><b>Q</b>: water quality &nbsp;·&nbsp; <b>M</b>: sound</div>
+<div id="modeSelect">
+  <h1>SAIL TOGETHER!</h1>
+  <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
+    tack upwind, dock at the island pier.<br>
+    Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
+  <button id="btnSolo">Solo — singlehand her</button>
+  <button id="btnHost">Host online co-op</button>
+  <div class="joinrow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a matey</button></div>
+  <div id="netStatus" class="sub"></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

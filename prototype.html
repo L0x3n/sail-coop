@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sail Together! — 2P co-op sailing prototype</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:#0a2a4a; height:100%; }
+  canvas.webgl { display:block; }
+  .hud { position:fixed; color:#fff; font-family:"Consolas","Courier New",monospace;
+         text-shadow:0 1px 3px rgba(0,0,0,.7); pointer-events:none; user-select:none; z-index:10; }
+  #cheats { left:10px; top:10px; font-size:12px; line-height:1.5;
+            background:rgba(0,20,40,.55); padding:8px 12px; border-radius:8px; }
+  #cheats b { font-size:13px; }
+  .p1c { color:#ff8a7a; } .p2c { color:#ffd95e; }
+  #topbar { top:10px; left:50%; transform:translateX(-50%); display:flex; gap:14px;
+            align-items:center; background:rgba(0,20,40,.55); padding:6px 14px; border-radius:10px; }
+  #topbar .col { text-align:center; font-size:12px; }
+  #topbar .big { font-size:18px; font-weight:bold; }
+  #timer { font-size:22px; font-weight:bold; min-width:80px; }
+  #msg { left:50%; top:42%; transform:translate(-50%,-50%); text-align:center; display:none; }
+  #msg h1 { font-size:46px; margin:0 0 8px 0; color:#aef7a2; }
+  #msg p  { font-size:20px; margin:0 0 16px 0; }
+  #msg button { pointer-events:auto; font-size:20px; font-family:inherit; padding:10px 26px;
+                border-radius:10px; border:0; background:#2f9e44; color:#fff; cursor:pointer; }
+  #msg button:hover { background:#37b24d; }
+  #toast { left:50%; top:18%; transform:translateX(-50%); font-size:26px; font-weight:bold;
+           color:#ffe066; opacity:0; transition:opacity .3s; }
+  .sideprompt { position:fixed; bottom:12%; left:50%; transform:translateX(-50%);
+            font-family:Consolas,monospace; font-weight:bold; font-size:16px; color:#fff;
+            background:rgba(0,0,0,.65); border:1px solid rgba(255,255,255,.6);
+            padding:4px 12px; border-radius:8px; display:none; pointer-events:none;
+            z-index:11; white-space:nowrap; }
+  #netchip { right:10px; top:10px; font-size:14px; font-weight:bold;
+            background:rgba(0,20,40,.6); padding:6px 12px; border-radius:8px; display:none; }
+  #lookHint { left:50%; top:58%; transform:translateX(-50%); font-size:15px;
+            background:rgba(0,0,0,.55); padding:5px 12px; border-radius:8px; display:none; }
+  #modeSelect input { font-size:22px; font-family:inherit; padding:11px; width:130px;
+            text-transform:uppercase; text-align:center; letter-spacing:6px;
+            border-radius:12px; border:2px solid rgba(255,255,255,.35);
+            background:rgba(255,255,255,.08); color:#fff; }
+  .joinrow { display:flex; gap:10px; }
+  .joinrow button { min-width:0; }
+  #modeSelect { position:fixed; inset:0; background:rgba(4,18,34,.85); display:flex;
+            flex-direction:column; align-items:center; justify-content:center; gap:18px;
+            z-index:30; color:#fff; font-family:Consolas,monospace; text-align:center;
+            pointer-events:auto; }
+  #modeSelect h1 { font-size:38px; margin:0; color:#ffd95e; }
+  #modeSelect .sub { font-size:15px; opacity:.85; max-width:580px; line-height:1.5; }
+  #modeSelect button { font-size:19px; font-family:inherit; padding:13px 28px; min-width:420px;
+            border-radius:12px; border:2px solid rgba(255,255,255,.35);
+            background:#1d4ed8; color:#fff; cursor:pointer; }
+  #modeSelect button:hover { background:#2563eb; }
+  #qnote { right:10px; bottom:10px; font-size:12px; opacity:.85;
+           background:rgba(0,20,40,.55); padding:5px 10px; border-radius:8px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div id="cheats" class="hud">
+  <b>WASD</b> move &nbsp;·&nbsp; <b>mouse</b> look (click or drag) &nbsp;·&nbsp; <b>SPACE</b> jump &nbsp;·&nbsp; <b>E</b> station<br>
+  At <b>HELM</b>: A/D = rudder &nbsp;·&nbsp; At <b>SAIL</b>: A/D = boom &nbsp;·&nbsp; <b>Q</b> = water quality<br>
+  Sail to the island pier &amp; stop alongside it. You can't sail straight upwind — tack!
+</div>
+<div id="topbar" class="hud">
+  <div class="col"><canvas id="compass" width="90" height="90"></canvas><div id="windtxt">Wind</div></div>
+  <div class="col"><div class="big" id="speed">0.0</div><div>speed</div><div class="big" id="timer">0:00</div></div>
+  <div class="col"><canvas id="miniboat" width="110" height="110"></canvas><div>trim / rudder</div></div>
+</div>
+<div id="msg" class="hud">
+  <h1 id="msgTitle">DOCKED!</h1>
+  <p id="msgText">Time: 0:00</p>
+  <button id="restartBtn">Sail again</button>
+</div>
+<div id="toast" class="hud"></div>
+<div id="promptP1" class="sideprompt"></div>
+<div id="netchip" class="hud"></div>
+<div id="lookHint" class="hud">click to capture the mouse — or hold &amp; drag to look &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; SPACE jump</div>
+<div id="qnote" class="hud"><b>Q</b>: water quality (fancy/flat)</div>
+<div id="modeSelect">
+  <h1>SAIL TOGETHER!</h1>
+  <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
+    tack upwind, dock at the island pier.<br>
+    Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
+  <button id="btnSolo">Solo — singlehand her</button>
+  <button id="btnHost">Host online co-op</button>
+  <div class="joinrow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a matey</button></div>
+  <div id="netStatus" class="sub"></div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ===================================================================
+   CONFIG — all key tuning constants. Hot-tweak here.
+   Units: world units (boat is ~8 long), seconds, radians unless noted.
+   =================================================================== */
+const CONFIG = {
+  // --- wind ---
+  windStrength: 14,        // base wind strength ("knots", arbitrary units)
+  windWander: 3.0,         // max wind direction drift, degrees per second
+  windStrengthWobble: 0.18,// +- fraction of strength slow oscillation
+
+  // --- sail ---
+  sailPower: 0.23,         // forward accel per unit windStrength at perfect trim
+  noGoHalfAngle: 40,       // degrees from dead-upwind where sail produces nothing
+  boomMax: 80,             // degrees, boom clamp from centerline
+  boomRate: 55,            // degrees/sec boom rotation while manned
+  windageDrift: 0.010,     // passive downwind push on hull (always on, makes drift)
+
+  // --- hull ---
+  fwdDragQuad: 0.040,      // quadratic forward water drag  (caps top speed ~ sqrt(P/k))
+  fwdDragLin: 0.06,        // small linear forward drag (so it eventually stops)
+  latResist: 2.6,          // strong lateral (keel) damping, /sec
+  leeway: 0.05,            // crosswind sideways push factor (slight drift)
+  rudderMax: 40,           // degrees rudder deflection
+  rudderRate: 80,          // degrees/sec rudder turn while manned
+  rudderAuthority: 0.15,   // yaw accel per rad rudder per unit fwd speed
+  yawDamp: 1.25,           // angular damping, /sec
+  turnDrag: 0.45,          // speed scrub while turning (|w|*|v|*this)
+
+  // --- heel & cosmetic motion ---
+  maxHeel: 0.24,           // radians of roll at full crosswind power
+  heelLerp: 1.6,           // how fast heel approaches target, /sec
+  turnHeel: 0.55,          // extra outward roll from turning (w*v*this)
+  bobAmp: 0.14,            // wave heave amplitude (cosmetic)
+  bobPitch: 0.022,         // wave pitch/roll amplitude (cosmetic)
+
+  // --- deck characters ---
+  walkAccel: 30,           // walking acceleration on deck
+  walkDamp: 8.5,           // ground friction /sec (max walk speed ~ accel/damp)
+  slideDampDown: 1.6,      // friction while knocked down -> they slide far
+  inertiaScale: 1.5,       // how strongly boat accel/turn throws characters
+  heelSlide: 26,           // slide accel per sin(heel) — the big "lean" force
+  stumbleThresh: 7.0,      // pseudo-force accel that knocks a standing char down
+  knockTime: 0.9,          // seconds down after a stumble
+  swimSpeed: 2.0,          // swim speed (climb back only when swimming INTO the hull)
+  wobbleSlide: 0.28,       // tiny always-on wave wobble force on deck
+
+  // --- collisions ---
+  bounceRestitution: 0.55, // velocity reflect on rock/island hit
+  bounceKick: 5.5,         // impulse thrown into characters on a hard hit
+  hardHitSpeed: 2.2,       // closing speed that counts as a "crash"
+
+  // --- docking ---
+  dockSpeed: 1.2,          // must be slower than this...
+  dockHold: 1.0,           // ...for this many seconds, alongside the pier
+
+  // --- first-person camera ---
+  fov: 75,                 // field of view
+  eyeHeight: 1.32,         // eye height above the deck
+  mouseSens: 0.0024,       // mouse-look radians per pixel
+  headBob: 0.06,           // walking head-bob amplitude
+
+  // --- jumping ---
+  jumpVel: 5.2,            // takeoff speed (clears the 0.62-high rail)
+  gravity: 14,             // pulls jumpers back down to the deck
+  airControl: 0.3,         // walk authority while airborne
+
+  // --- world ---
+  islandDist: 260,         // spawn -> island distance (island is upwind)
+  islandRadius: 38,
+};
+
+/* =========================== utils =========================== */
+const TAU = Math.PI * 2;
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+function wrapPi(a) { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; }
+function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function fmtTime(s) { s = Math.max(0, s | 0); return ((s / 60) | 0) + ':' + String(s % 60).padStart(2, '0'); }
+// 2D vector helpers on plain {x,z}
+const v2 = (x = 0, z = 0) => ({ x, z });
+const dot2 = (a, b) => a.x * b.x + a.z * b.z;
+const len2 = a => Math.hypot(a.x, a.z);
+// heading angle -> unit vector (yaw 0 = +z, increasing yaw veers toward +x)
+const headVec = a => v2(Math.sin(a), Math.cos(a));
+const rightVec = a => v2(Math.cos(a), -Math.sin(a));
+
+/* =========================== input =========================== */
+const keys = Object.create(null);
+const pressedQueue = [];
+window.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Space','ShiftRight'].includes(e.code)) e.preventDefault();
+  if (!keys[e.code]) pressedQueue.push(e.code);
+  keys[e.code] = true;
+  ensureAudio();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// --- mouse look: pointer lock when the browser allows it, drag-to-look fallback otherwise
+//     (embedded panels/iframes often deny pointer lock silently) ---
+let dragLook = false;
+document.addEventListener('mousedown', () => {
+  if (!gameStarted()) return;
+  dragLook = true;
+  if (!document.pointerLockElement) {
+    try {
+      const p = renderer.domElement.requestPointerLock();
+      if (p && typeof p.catch === 'function') p.catch(() => {});  // denied -> drag fallback covers it
+    } catch (err) {}
+  }
+});
+document.addEventListener('mouseup', () => { dragLook = false; });
+document.addEventListener('mousemove', e => {
+  if (inMenu) return;
+  if (!document.pointerLockElement && !dragLook) return;
+  const c = myChar();
+  // yaw increases counter-clockwise in this convention -> mouse right = decrease
+  c.facing = wrapPi(c.facing - e.movementX * CONFIG.mouseSens);
+  c.pitch = clamp(c.pitch - e.movementY * CONFIG.mouseSens, -1.15, 1.15);
+});
+
+/* ====================== audio (one splash beep) ====================== */
+let audioCtx = null;
+function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }
+function splashBeep() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(500, t);
+  o.frequency.exponentialRampToValueAtTime(120, t + 0.22);
+  g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + 0.26);
+}
+
+/* =========================== scene =========================== */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+// never 0x0 (hidden/headless windows report zero size before first layout)
+const viewSize = () => ({ w: Math.max(320, innerWidth), h: Math.max(240, innerHeight) });
+renderer.setSize(viewSize().w, viewSize().h);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.domElement.className = 'webgl';
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const SKY = 0xcfeaf8;            // horizon tint: fog + water blend into this
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 260, 850);
+
+/* two first-person cameras: P1 (left / fullscreen in solo), P2 (right half) */
+function makeCam() {
+  const c = new THREE.PerspectiveCamera(CONFIG.fov, viewSize().w / viewSize().h, 0.15, 2000);
+  c.position.set(0, 20, -35);
+  return c;
+}
+const cam1 = makeCam(), cam2 = makeCam();
+function applyAspect() {
+  const v = viewSize();
+  for (const c of [cam1, cam2]) { c.aspect = v.w / v.h; c.updateProjectionMatrix(); }
+  renderer.setSize(v.w, v.h);
+}
+window.addEventListener('resize', applyAspect);
+
+const hemi = new THREE.HemisphereLight(0xcfeaff, 0x2a5a7a, 0.95);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2d8, 1.45);
+sun.position.set(80, 120, 40);
+scene.add(sun);
+// real-time shadows: the shadow box follows the boat (set each frame in visualStep)
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 40; sun.shadow.camera.far = 320;
+sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
+sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
+sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03;
+scene.add(sun.target);
+
+/* --- sky dome: soft gradient + sun glow, follows the camera --- */
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(900, 24, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: {
+      uZenith: { value: new THREE.Color(0x4d9ed8) },
+      uHorizon: { value: new THREE.Color(SKY) },
+      uSun: { value: sun.position.clone().normalize() },
+    },
+    vertexShader: `varying vec3 vDir;
+      void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `uniform vec3 uZenith,uHorizon,uSun; varying vec3 vDir;
+      void main(){
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, 0.0, 1.0);
+        vec3 col = mix(uHorizon, uZenith, pow(h, 0.5));
+        float s = max(dot(d, normalize(uSun)), 0.0);
+        col += vec3(1.0, 0.92, 0.72) * (pow(s, 900.0) * 1.2 + pow(s, 16.0) * 0.10);
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  }));
+skyDome.userData.noShadow = true;
+skyDome.frustumCulled = false;
+scene.add(skyDome);
+
+/* --- a few lazy clouds drifting with the wind --- */
+const clouds = [];
+{
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8fa9bb, emissiveIntensity: 0.45 });
+  for (let i = 0; i < 9; i++) {
+    const cl = new THREE.Group();
+    const n = 3 + (i % 3);
+    for (let k = 0; k <= n; k++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(6 + Math.random() * 8, 10, 8), cloudMat);
+      puff.position.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 14);
+      puff.scale.y = 0.45;
+      puff.userData.noShadow = true;
+      cl.add(puff);
+    }
+    cl.position.set((Math.random() - 0.5) * 1100, 70 + Math.random() * 55, (Math.random() - 0.5) * 1100);
+    scene.add(cl);
+    clouds.push(cl);
+  }
+}
+
+/* =========================== water ===========================
+   Two interchangeable meshes (Q toggles). Purely cosmetic — hull
+   physics never reads the water. Both follow the boat (snapped to a
+   grid so the surface pattern stays world-anchored). */
+let fancyWater = true;
+const WATER_SIZE = 1400;
+
+// --- flat water: solid lambert plane with a gentle CPU sine swell ---
+const flatGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 36, 36);
+flatGeo.rotateX(-Math.PI / 2);
+const flatMat = new THREE.MeshLambertMaterial({ color: 0x1f6fb5 });
+const flatWater = new THREE.Mesh(flatGeo, flatMat);
+scene.add(flatWater);
+const flatBase = flatGeo.attributes.position.array.slice();
+function updateFlatWater(t, cx, cz) {
+  flatWater.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
+  const p = flatGeo.attributes.position.array;
+  for (let i = 0; i < p.length; i += 3) {
+    const wx = flatBase[i] + flatWater.position.x, wz = flatBase[i + 2] + flatWater.position.z;
+    p[i + 1] = Math.sin(wx * 0.045 + t * 0.9) * 0.22 + Math.cos(wz * 0.05 + t * 0.7) * 0.18;
+  }
+  flatGeo.attributes.position.needsUpdate = true;
+  flatGeo.computeVertexNormals();
+}
+
+// --- fancy water: Gerstner-wave shader with fresnel, sun glint, crest foam ---
+const fancyUniforms = {
+  uTime: { value: 0 },
+  uOffset: { value: new THREE.Vector2(0, 0) },
+  uSunDir: { value: sun.position.clone().normalize() },
+  uCamPos: { value: new THREE.Vector3() },
+  uDeep: { value: new THREE.Color(0x0e4e8e) },
+  uShallow: { value: new THREE.Color(0x2f9ad0) },
+  uSky: { value: new THREE.Color(SKY) },
+  uFogNear: { value: scene.fog.near }, uFogFar: { value: scene.fog.far },
+};
+const fancyMat = new THREE.ShaderMaterial({
+  uniforms: fancyUniforms,
+  vertexShader: `
+    uniform float uTime; uniform vec2 uOffset;
+    varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
+    // one Gerstner wave: dir, steepness, wavelength
+    vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
+      float k = 6.28318 / len;
+      float c = sqrt(9.8 / k);
+      vec2 dir = normalize(d);
+      float f = k * (dot(dir, p.xz) - c * uTime);
+      float a = steep / k;
+      tang += vec3(-dir.x*dir.x*steep*sin(f), dir.x*steep*cos(f), -dir.x*dir.y*steep*sin(f));
+      binc += vec3(-dir.x*dir.y*steep*sin(f), dir.y*steep*cos(f), -dir.y*dir.y*steep*sin(f));
+      return vec3(dir.x*a*cos(f), a*sin(f), dir.y*a*cos(f));
+    }
+    void main() {
+      vec3 p = position;
+      p.xz += uOffset;                       // world-anchored pattern
+      vec3 tang = vec3(1.0,0.0,0.0), binc = vec3(0.0,0.0,1.0);
+      vec3 base = p;
+      vec3 off = vec3(0.0);
+      off += gerstner(vec2( 1.0, 0.3), 0.16, 26.0, base, tang, binc);
+      off += gerstner(vec2(-0.6, 1.0), 0.14, 15.0, base, tang, binc);
+      off += gerstner(vec2( 0.9,-0.8), 0.10,  8.0, base, tang, binc);
+      off += gerstner(vec2( 0.2, 1.0), 0.08,  4.5, base, tang, binc);
+      p += off;
+      p.xz -= uOffset;
+      vCrest = off.y;
+      vNrm = normalize(cross(binc, tang));
+      vec4 wp = modelMatrix * vec4(p, 1.0);
+      vPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: `
+    uniform vec3 uSunDir, uCamPos, uDeep, uShallow, uSky;
+    uniform float uFogNear, uFogFar, uTime;
+    varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
+    void main() {
+      vec3 n = normalize(vNrm);
+      // fine procedural ripples perturb the normal for lively sparkle
+      float r1 = sin(vPos.x * 1.45 + uTime * 1.2) * sin(vPos.z * 1.15 - uTime * 0.9);
+      float r2 = sin(vPos.x * 3.60 - uTime * 1.8) * sin(vPos.z * 3.20 + uTime * 1.4);
+      n = normalize(n + vec3(r1 * 0.07 + r2 * 0.05, 0.0, r1 * 0.05 - r2 * 0.06));
+      vec3 viewDir = normalize(uCamPos - vPos);
+      float fres = pow(1.0 - max(dot(n, viewDir), 0.0), 3.0);
+      float heightMix = clamp(vCrest * 1.3 + 0.5, 0.0, 1.0);
+      vec3 col = mix(uDeep, uShallow, heightMix);
+      // fake subsurface glow on sunlit wave flanks
+      float sss = smoothstep(0.15, 0.85, vCrest) * max(dot(n, uSunDir), 0.0);
+      col += vec3(0.05, 0.38, 0.42) * sss * 0.55;
+      col = mix(col, uSky, fres * 0.6);
+      // sun glitter: tight + broad lobe
+      vec3 h = normalize(uSunDir + viewDir);
+      float ndh = max(dot(n, h), 0.0);
+      col += vec3(1.0, 0.95, 0.8) * (pow(ndh, 260.0) * 1.4 + pow(ndh, 24.0) * 0.10);
+      // crest foam
+      float foamN = sin(vPos.x * 2.2 + uTime * 1.8) * sin(vPos.z * 2.4 - uTime * 1.4);
+      float foam = smoothstep(0.40, 0.72, vCrest + foamN * 0.14);
+      col = mix(col, vec3(0.93, 0.98, 1.0), foam * 0.8);
+      // distance fog to match scene
+      float d = distance(uCamPos, vPos);
+      col = mix(col, uSky, smoothstep(uFogNear, uFogFar, d));
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+const fancyGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 180, 180);
+fancyGeo.rotateX(-Math.PI / 2);
+const fancyWaterMesh = new THREE.Mesh(fancyGeo, fancyMat);
+fancyWaterMesh.frustumCulled = false;
+scene.add(fancyWaterMesh);
+function updateFancyWater(t, cx, cz) {
+  fancyWaterMesh.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
+  fancyUniforms.uTime.value = t;
+  fancyUniforms.uOffset.value.set(fancyWaterMesh.position.x, fancyWaterMesh.position.z);
+  // uCamPos is set per-view at render time (splitscreen has two eyes)
+}
+function setWaterQuality(fancy) {
+  fancyWater = fancy;
+  fancyWaterMesh.visible = fancy;
+  flatWater.visible = !fancy;
+}
+setWaterQuality(true);
+
+/* ================= wind streaks (read the wind on the water) ================= */
+const STREAKS = 42;
+const streakGeo = new THREE.PlaneGeometry(4.2, 0.14);
+streakGeo.rotateX(-Math.PI / 2);
+const streakMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false });
+const streaks = [];
+for (let i = 0; i < STREAKS; i++) {
+  const m = new THREE.Mesh(streakGeo, streakMat);
+  m.position.set((Math.random() - 0.5) * 240, 0.3, (Math.random() - 0.5) * 240);
+  m.userData.life = Math.random() * 4;
+  scene.add(m); streaks.push(m);
+}
+function updateStreaks(dt, t, cx, cz, windAngle, windStr) {
+  for (const s of streaks) {
+    s.userData.life += dt;
+    if (s.userData.life > 4 || Math.hypot(s.position.x - cx, s.position.z - cz) > 170) {
+      s.userData.life = 0;
+      s.position.set(cx + (Math.random() - 0.5) * 280, 0.3, cz + (Math.random() - 0.5) * 280);
+    }
+    s.position.x += Math.sin(windAngle) * windStr * 0.55 * dt;
+    s.position.z += Math.cos(windAngle) * windStr * 0.55 * dt;
+    s.rotation.y = windAngle;
+    const ph = s.userData.life / 4;
+    s.material = streakMat;
+    s.scale.x = 0.5 + Math.sin(ph * Math.PI) * 0.9;
+  }
+  streakMat.opacity = 0.22 + 0.1 * Math.sin(t * 2);
+}
+
+/* =========================== boat model ===========================
+   boatGroup: world position + yaw (the physics body)
+   heelGroup: cosmetic roll/pitch/heave; everything on deck lives here,
+   so characters inherit the heel visually while their own physics
+   stays flat boat-local 2D. Hull is ~8 long, ~3.2 wide. Deck y=1. */
+const HULL_L = 8, HULL_W = 3.2, DECK_Y = 1.0;
+const DECK_X = 1.3, DECK_Z = 3.35;            // walkable half-extents
+const GAPS = [ { z0: -0.6, z1: 1.4 } ];       // gangway gaps (both sides, boat-local z range)
+const HELM_POS = v2(0, -2.65), MAST_POS = v2(0, 0.6), STATION_R = 1.15;
+const SAIL_STA = v2(0, 1.45);   // sail-trim spot just ahead of the mast; you face aft to watch the sail
+
+const boatGroup = new THREE.Group();
+const heelGroup = new THREE.Group();
+boatGroup.add(heelGroup);
+scene.add(boatGroup);
+
+const woodMat = new THREE.MeshLambertMaterial({ color: 0x8a5a33 });
+const woodDark = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+const woodPale = new THREE.MeshLambertMaterial({ color: 0xa9764a });
+{
+  // hull: box + raked bow wedge
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(HULL_W, 1.4, HULL_L - 1.6), woodMat);
+  hull.position.y = 0.3; heelGroup.add(hull);
+  const bow = new THREE.Mesh(new THREE.CylinderGeometry(0.01, HULL_W * 0.52, 2.2, 4, 1), woodMat);
+  bow.rotation.x = -Math.PI / 2; bow.rotation.y = Math.PI / 4;
+  bow.position.set(0, 0.3, HULL_L / 2 - 0.75); bow.scale.y = 1; heelGroup.add(bow);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(HULL_W - 0.3, 0.12, HULL_L - 1.2), woodPale);
+  deck.position.y = DECK_Y - 0.05; heelGroup.add(deck);
+  // railings with gaps
+  const railMat = woodDark;
+  function railRun(x, z0, z1) {
+    const len = z1 - z0; if (len <= 0.05) return;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, len), railMat);
+    bar.position.set(x, DECK_Y + 0.62, (z0 + z1) / 2); heelGroup.add(bar);
+    for (let z = z0 + 0.25; z < z1; z += 1.1) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.09), railMat);
+      post.position.set(x, DECK_Y + 0.31, z); heelGroup.add(post);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const x = side * (DECK_X + 0.15);
+    let z = -DECK_Z;
+    for (const g of GAPS) { railRun(x, z, g.z0); z = g.z1; }
+    railRun(x, z, DECK_Z);
+  }
+  railRun(0, -DECK_Z, -DECK_Z);  // no-op keeps linter quiet
+  const stern = new THREE.Mesh(new THREE.BoxGeometry(HULL_W - 0.2, 0.7, 0.12), railMat);
+  stern.position.set(0, DECK_Y + 0.35, -DECK_Z - 0.18); heelGroup.add(stern);
+}
+
+// helm: ship's wheel
+const wheelGroup = new THREE.Group();
+wheelGroup.position.set(HELM_POS.x, DECK_Y + 0.75, HELM_POS.z + 0.55);
+heelGroup.add(wheelGroup);
+{
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 8, 18), woodDark);
+  wheelGroup.add(rim);
+  for (let i = 0; i < 4; i++) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.15, 0.06), woodDark);
+    spoke.rotation.z = i * Math.PI / 4; wheelGroup.add(spoke);
+  }
+  const pedestal = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.75, 0.16), woodDark);
+  pedestal.position.set(0, -0.55, 0); wheelGroup.add(pedestal);
+}
+
+// mast + boom + sail
+const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 7.5, 8), woodDark);
+mast.position.set(MAST_POS.x, DECK_Y + 3.75, MAST_POS.z);
+heelGroup.add(mast);
+const boomGroup = new THREE.Group();                 // rotates with sail trim
+boomGroup.position.set(MAST_POS.x, DECK_Y + 2.05, MAST_POS.z);  // boom clears first-person eye height
+heelGroup.add(boomGroup);
+const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.6, 8), woodDark);
+boom.rotation.x = Math.PI / 2;
+boom.position.z = -2.3;                              // boom extends aft of mast
+boomGroup.add(boom);
+// sail: vertical plane between mast top and boom end; verts animated each frame
+const SAIL_W = 8, SAIL_H = 8;                        // segments
+const sailGeo = new THREE.PlaneGeometry(4.2, 4.6, SAIL_W, SAIL_H);
+const sailMat = new THREE.MeshLambertMaterial({ color: 0xf5f0e6, side: THREE.DoubleSide });
+const sail = new THREE.Mesh(sailGeo, sailMat);
+sail.rotation.y = Math.PI / 2;                       // plane faces sideways
+sail.position.set(0, 2.6, -2.15);
+boomGroup.add(sail);
+const sailBase = sailGeo.attributes.position.array.slice();
+// triangular-ish: pull top-aft corner in by shrinking upper rows toward the mast
+{
+  const p = sailGeo.attributes.position.array;
+  for (let iy = 0; iy <= SAIL_H; iy++) for (let ix = 0; ix <= SAIL_W; ix++) {
+    const i = (iy * (SAIL_W + 1) + ix) * 3;
+    const v = iy / SAIL_H;                           // 0 top, 1 bottom in plane coords? y goes +2.3..-2.3
+    const yNorm = (p[i + 1] + 2.3) / 4.6;            // 0 bottom .. 1 top
+    p[i] = p[i] * (1 - yNorm * 0.78) - yNorm * 1.6;  // taper + shift toward mast
+    sailBase[i] = p[i]; sailBase[i + 1] = p[i + 1]; sailBase[i + 2] = p[i + 2];
+  }
+  sailGeo.attributes.position.needsUpdate = true;
+}
+// masthead pennant: points downwind, the in-world wind cue
+const flagGroup = new THREE.Group();
+flagGroup.position.set(0, 7.6, 0); mast.add(flagGroup);
+const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.4, 6, 1),
+  new THREE.MeshBasicMaterial({ color: 0xe8443a, side: THREE.DoubleSide }));
+flag.position.x = 0.65; flagGroup.add(flag);
+const flagBase = flag.geometry.attributes.position.array.slice();
+
+// station markers (small deck pads so players can find them)
+for (const [pos, col] of [[HELM_POS, 0x4dabf7], [SAIL_STA, 0x69db7c]]) {
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 16),
+    new THREE.MeshLambertMaterial({ color: col }));
+  pad.position.set(pos.x, DECK_Y + 0.02, pos.z); heelGroup.add(pad);
+}
+
+/* =========================== world: island, pier, rocks =========================== */
+const islandPos = v2(0, -CONFIG.islandDist);          // upwind of spawn (wind blows +z at start)
+{
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.islandRadius, CONFIG.islandRadius + 6, 3, 28),
+    new THREE.MeshLambertMaterial({ color: 0xe7d08a }));
+  sand.position.set(islandPos.x, 0.4, islandPos.z); scene.add(sand);
+  const hill = new THREE.Mesh(new THREE.ConeGeometry(24, 12, 20),
+    new THREE.MeshLambertMaterial({ color: 0x57a05a }));
+  hill.position.set(islandPos.x - 6, 6, islandPos.z - 8); scene.add(hill);
+  const hill2 = new THREE.Mesh(new THREE.ConeGeometry(14, 8, 16),
+    new THREE.MeshLambertMaterial({ color: 0x6cb56f }));
+  hill2.position.set(islandPos.x + 14, 4, islandPos.z + 2); scene.add(hill2);
+  for (const [px, pz] of [[-14, 16], [10, 20], [20, -12]]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 5, 6),
+      new THREE.MeshLambertMaterial({ color: 0x9a6b3f }));
+    trunk.position.set(islandPos.x + px, 4, islandPos.z + pz); trunk.rotation.z = 0.15; scene.add(trunk);
+    for (let i = 0; i < 5; i++) {
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.6, 5),
+        new THREE.MeshLambertMaterial({ color: 0x3f8f46 }));
+      leaf.position.set(islandPos.x + px, 6.6, islandPos.z + pz);
+      leaf.rotation.z = Math.PI / 2.4; leaf.rotation.y = i * TAU / 5; scene.add(leaf);
+    }
+  }
+}
+// pier sticks out from the island toward open water (toward spawn, +z)
+const pierA = v2(islandPos.x, islandPos.z + CONFIG.islandRadius - 2);   // island end
+const pierB = v2(islandPos.x, islandPos.z + CONFIG.islandRadius + 26);  // water end
+{
+  const len = pierB.z - pierA.z;
+  const deckP = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, len), woodMat);
+  deckP.position.set(pierA.x, 1.0, (pierA.z + pierB.z) / 2); scene.add(deckP);
+  for (let z = pierA.z + 2; z < pierB.z; z += 4.5) for (const sx of [-1.7, 1.7]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.4, 7), woodDark);
+    post.position.set(pierA.x + sx, 0.1, z); scene.add(post);
+    // white stripe markers so the pier reads as "the dock"
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.25, 0.32),
+      new THREE.MeshLambertMaterial({ color: 0xf1f3f5 }));
+    cap.position.set(pierA.x + sx, 1.3, z); scene.add(cap);
+  }
+  // bobbing arrow above the pier tip
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.4, 10),
+    new THREE.MeshLambertMaterial({ color: 0x40c057 }));
+  arrow.rotation.x = Math.PI; arrow.position.set(pierA.x, 7, pierB.z - 3);
+  scene.add(arrow);
+  arrow.userData.baseY = 7;
+  window.__dockArrow = arrow;
+  // faint green dock zones either side of the pier
+  for (const sx of [-1, 1]) {
+    const zone = new THREE.Mesh(new THREE.PlaneGeometry(6.2, len + 4),
+      new THREE.MeshBasicMaterial({ color: 0x69db7c, transparent: true, opacity: 0.13, depthWrite: false }));
+    zone.rotation.x = -Math.PI / 2;
+    zone.position.set(pierA.x + sx * 5.4, 0.25, (pierA.z + pierB.z) / 2);
+    scene.add(zone);
+  }
+}
+// rocks: weave between spawn and the island, never blocking the pier line
+const rockDefs = [ { x: -19, z: -62, r: 4 }, { x: 23, z: -118, r: 5 }, { x: -10, z: -168, r: 3.5 }, { x: 26, z: -205, r: 4.5 } ];
+for (const rd of rockDefs) {
+  const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(rd.r, 0),
+    new THREE.MeshLambertMaterial({ color: 0x868e96, flatShading: true }));
+  rock.position.set(rd.x, rd.r * 0.25, rd.z);
+  rock.rotation.set(Math.random() * 2, Math.random() * 2, Math.random() * 2);
+  scene.add(rock);
+  const foam = new THREE.Mesh(new THREE.RingGeometry(rd.r * 0.95, rd.r * 1.25, 20),
+    new THREE.MeshBasicMaterial({ color: 0xe9f5ff, transparent: true, opacity: 0.5, depthWrite: false }));
+  foam.rotation.x = -Math.PI / 2; foam.position.set(rd.x, 0.22, rd.z); scene.add(foam);
+}
+// obstacle circles for hull collision (island as one big circle)
+const obstacles = rockDefs.map(r => ({ x: r.x, z: r.z, r: r.r + 1.8 }));
+obstacles.push({ x: islandPos.x, z: islandPos.z, r: CONFIG.islandRadius + 2.5 });
+
+/* ================= wake + splash pools ================= */
+// soft radial foam sprite, generated at runtime (no assets)
+const wakeTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
+const wakePool = [];
+const wakeMat = new THREE.MeshBasicMaterial({ map: wakeTex, color: 0xeaf6ff, transparent: true, opacity: 0.55, depthWrite: false });
+const wakeGeo = new THREE.PlaneGeometry(1, 1); wakeGeo.rotateX(-Math.PI / 2);
+for (let i = 0; i < 70; i++) {
+  const m = new THREE.Mesh(wakeGeo, wakeMat.clone());
+  m.visible = false; scene.add(m); wakePool.push(m);
+}
+let wakeIdx = 0, wakeTimer = 0;
+function spawnWake(x, z, yaw, w) {
+  const m = wakePool[wakeIdx++ % wakePool.length];
+  m.visible = true; m.position.set(x, 0.18, z); m.rotation.y = yaw;
+  m.scale.set(w, 1, 1.4); m.userData.life = 0; m.material.opacity = 0.5;
+}
+function updateWake(dt) {
+  for (const m of wakePool) {
+    if (!m.visible) continue;
+    m.userData.life += dt;
+    const t = m.userData.life / 2.2;
+    if (t >= 1) { m.visible = false; continue; }
+    m.scale.x += dt * 2.2; m.scale.z += dt * 0.8;
+    m.material.opacity = 0.5 * (1 - t);
+  }
+}
+const splashPool = [];
+const splashGeo = new THREE.SphereGeometry(0.16, 6, 5);
+const splashMat = new THREE.MeshBasicMaterial({ color: 0xf1faff });
+for (let i = 0; i < 36; i++) {
+  const m = new THREE.Mesh(splashGeo, splashMat);
+  m.visible = false; m.userData.noShadow = true;
+  scene.add(m); splashPool.push(m);
+}
+function spawnDroplets(x, z, n, spread, up) {
+  for (const m of splashPool) {
+    if (m.visible || n-- <= 0) continue;
+    m.visible = true; m.position.set(x, 0.3, z);
+    m.userData.vx = (Math.random() - 0.5) * spread;
+    m.userData.vy = up * (0.7 + Math.random() * 0.9);
+    m.userData.vz = (Math.random() - 0.5) * spread;
+  }
+}
+function spawnSplash(x, z, big) {
+  splashBeep();
+  spawnDroplets(x, z, big ? 14 : 9, 5, 3.2);
+  spawnWake(x, z, Math.random() * TAU, big ? 1.6 : 1.0);   // foam patch on the surface
+}
+function updateSplash(dt) {
+  for (const m of splashPool) {
+    if (!m.visible) continue;
+    m.userData.vy -= 12 * dt;
+    m.position.x += m.userData.vx * dt;
+    m.position.y += m.userData.vy * dt;
+    m.position.z += m.userData.vz * dt;
+    if (m.position.y < 0) m.visible = false;
+  }
+}
+
+/* =========================== characters ===========================
+   Goofy pirates: chunky body, huge googly eyes whose pupils lag behind
+   every lurch of the boat, brows, potato nose, flailing noodle arms. */
+function makePirate(shirtCol, hatCol, hatStyle) {
+  const g = new THREE.Group();
+  const M = c => new THREE.MeshLambertMaterial({ color: c });
+  const parts = { eyes: [], pupils: [], brows: [], arms: [] };
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.5, 4, 12), M(shirtCol));
+  body.position.y = 0.6; g.add(body);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.355, 0.355, 0.11, 12), M(0x3a2a1a));
+  belt.position.y = 0.45; g.add(belt);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 12), M(0xf2c29b));
+  head.position.y = 1.22; g.add(head);
+  // googly eyes (model faces +z)
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.105, 10, 8), M(0xffffff));
+    eye.position.set(sx * 0.115, 1.3, 0.235); g.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), M(0x14100c));
+    pupil.position.set(0, 0, 0.075); eye.add(pupil);
+    parts.eyes.push(eye); parts.pupils.push(pupil);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.04), M(0x4a2c18));
+    brow.position.set(sx * 0.115, 1.43, 0.26); brow.rotation.z = sx * -0.28;
+    g.add(brow); parts.brows.push(brow);
+  }
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), M(0xe8a87b));
+  nose.position.set(0, 1.2, 0.3); nose.scale.z = 1.3; g.add(nose);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.045, 0.03), M(0x5a2c20));
+  mouth.position.set(0, 1.07, 0.275); g.add(mouth); parts.mouth = mouth;
+  // hats: captain tricorn w/ feather vs bandana w/ tail
+  if (hatStyle === 'captain') {
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 10), M(hatCol));
+    hat.position.y = 1.48; g.add(hat);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.05, 10), M(hatCol));
+    brim.position.y = 1.39; g.add(brim);
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 6), M(0xf0e040));
+    feather.position.set(0.2, 1.62, 0); feather.rotation.z = -0.5; g.add(feather);
+  } else {
+    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 8), M(hatCol));
+    wrap.position.y = 1.32; wrap.scale.y = 0.62; g.add(wrap);
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), M(hatCol));
+    knot.position.set(0, 1.34, -0.28); g.add(knot);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.05), M(hatCol));
+    tail.position.set(0.06, 1.18, -0.34); tail.rotation.z = 0.4; g.add(tail);
+  }
+  // noodle arms pivoting at the shoulder
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.42, 3, 8), M(shirtCol));
+    arm.geometry.translate(0, -0.26, 0);
+    arm.position.set(sx * 0.4, 1.0, 0);
+    arm.rotation.z = sx * -0.18;
+    g.add(arm); parts.arms.push(arm);
+  }
+  g.userData.parts = parts;
+  return g;
+}
+
+/* per-frame goofy life: arm poses, lagging googly pupils, blinks, O-mouth */
+function animateChar(c, dt, t) {
+  const P = c.mesh.userData.parts;
+  if (!P) return;
+  const k = Math.min(1, 12 * dt);
+  const moving = !!c._animMoving;
+  for (let i = 0; i < 2; i++) {
+    const arm = P.arms[i], s = i ? 1 : -1;
+    let rx = 0, rz = s * -0.18;
+    if (c.mode === 'water') { rx = -2.5 + Math.sin(c.walkPhase * 1.7 + i * Math.PI) * 0.95; rz = s * -0.35; }
+    else if (c.knock > 0) { rx = -2.7 + Math.sin(t * 11 + i * 2) * 0.45; rz = s * -0.95; }
+    else if (c.station) { rx = -1.15; rz = s * -0.05; }
+    else if (moving) { rx = Math.sin(c.walkPhase + i * Math.PI) * 0.85; }
+    arm.rotation.x = lerp(arm.rotation.x, rx, k);
+    arm.rotation.z = lerp(arm.rotation.z, rz, k);
+  }
+  // pupils on a loose spring: thrown around by acceleration, wander a bit
+  const e = c._eye ??= { px: 0, py: 0, vx: 0, vy: 0, pvx: 0, pvz: 0, blink: 2 + Math.random() * 3, blinkT: 0 };
+  const axw = clamp((c.vel.x - e.pvx) / Math.max(dt, 1e-4), -25, 25);
+  const azw = clamp((c.vel.z - e.pvz) / Math.max(dt, 1e-4), -25, 25);
+  e.pvx = c.vel.x; e.pvz = c.vel.z;
+  e.vx += (-axw * 0.004 + Math.sin(t * 1.3 + c.pos.z) * 0.0015 - e.px * 90 - e.vx * 8) * dt;
+  e.vy += (-azw * 0.002 + Math.cos(t * 0.9 + c.pos.x) * 0.0015 - e.py * 90 - e.vy * 8) * dt;
+  e.px = clamp(e.px + e.vx * dt, -0.042, 0.042);
+  e.py = clamp(e.py + e.vy * dt, -0.035, 0.035);
+  e.blink -= dt;
+  if (e.blink <= 0) { e.blink = 2.2 + Math.random() * 3.5; e.blinkT = 0.13; }
+  if (e.blinkT > 0) e.blinkT -= dt;
+  const surprised = c.knock > 0 || c.mode === 'water';
+  for (let i = 0; i < 2; i++) {
+    P.pupils[i].position.set(e.px, e.py, 0.075);
+    const sc = surprised ? 1.35 : 1;
+    P.eyes[i].scale.x = lerp(P.eyes[i].scale.x, sc, k);
+    P.eyes[i].scale.z = lerp(P.eyes[i].scale.z, sc, k);
+    P.eyes[i].scale.y = e.blinkT > 0 ? 0.12 : lerp(P.eyes[i].scale.y, sc, k);
+    P.brows[i].position.y = lerp(P.brows[i].position.y, surprised ? 1.47 : 1.43, k);
+  }
+  P.mouth.scale.x = lerp(P.mouth.scale.x, surprised ? 0.55 : 1, k);
+  P.mouth.scale.y = lerp(P.mouth.scale.y, surprised ? 3.2 : 1, k);
+}
+/* Character state:
+   mode 'deck'  — pos is boat-local {x,z}, mesh parented to heelGroup
+   mode 'water' — pos is world {x,z}, mesh parented to scene
+   station: null | 'helm' | 'sail' (locked = braced, slide-immune) */
+function makeChar(name, shirt, hat, lx, lz) {
+  const mesh = makePirate(shirt, hat, name === 'P1' ? 'captain' : 'bandana');
+  heelGroup.add(mesh);
+  return {
+    name, mesh,
+    mode: 'deck', station: null,
+    pos: v2(lx, lz), vel: v2(),
+    knock: 0,            // >0 while knocked down (no control, low friction)
+    walkPhase: 0, facing: 0, pitch: 0,
+    jumpY: 0, vy: 0,     // height above deck + vertical speed
+    netAxes: { fwd: 0, strafe: 0, j: 0 },   // remote matey's input (host applies it)
+    overboardCount: 0,
+  };
+}
+const p1 = makeChar('P1', 0xe8443a, 0x7a3030, -0.7, -1.5);   // red — host / solo
+const p2 = makeChar('P2', 0xffd43b, 0x445522, 0.7, -1.5);    // gold — the matey
+const chars = [p1, p2];
+
+/* =========================== game state =========================== */
+const boat = {
+  pos: v2(0, 0), yaw: Math.PI / 2,      // spawn on a beam reach (wind blows +z, island at -z)
+  vel: v2(), angVel: 0,
+  rudder: 0,                            // radians, + = turn right
+  boomAngle: 20 * D2R,                  // radians from centerline
+  heel: 0,                              // + = starboard side dips
+  cosmPitch: 0, cosmHeave: 0,
+  lastAccel: v2(), lastAngAccel: 0,
+  sailForce: 0, luffing: true, noGo: false,
+};
+const wind = { angle: 0, strength: CONFIG.windStrength };  // angle = direction wind blows TOWARD
+let runTime = 0, docked = false, dockTimer = 0, shake = 0, started = false;
+
+/* --- session / networking state --- */
+let netRole = null;          // null = local solo, 'host' or 'guest'
+let guestHere = false;       // host: a matey is connected
+let inMenu = true;
+let peer = null, conn = null;
+const myChar = () => netRole === 'guest' ? p2 : p1;
+const charActive = c => c === p1 || netRole === 'guest' || (netRole === 'host' && guestHere);
+const gameStarted = () => !inMenu;
+
+/* =========================== wind =========================== */
+function updateWind(dt, t) {
+  // smooth deterministic wander, a few degrees per second
+  const drift = (Math.sin(t * 0.10) * 0.6 + Math.sin(t * 0.037 + 2.1) * 0.4);
+  wind.angle = wrapPi(wind.angle + drift * CONFIG.windWander * D2R * dt);
+  wind.strength = CONFIG.windStrength * (1 + CONFIG.windStrengthWobble * Math.sin(t * 0.13 + 1));
+}
+
+/* =========================== sailing physics (2D horizontal plane) =========================== */
+function updateBoat(dt) {
+  const fwd = headVec(boat.yaw), rgt = rightVec(boat.yaw);
+  const windV = headVec(wind.angle);
+
+  // angle from boat heading to wind-travel direction: |d|=180 -> head to wind
+  const d = wrapPi(wind.angle - boat.yaw);
+  const offWind = 180 - Math.abs(d) * R2D;            // degrees off dead-upwind
+  boat.noGo = offWind < CONFIG.noGoHalfAngle;
+  const noGoF = smoothstep(CONFIG.noGoHalfAngle - 6, CONFIG.noGoHalfAngle + 9, offWind);
+
+  // ideal boom bisects wind/heading; sail falls to leeward = sign(d)
+  const idealBoom = Math.sign(d || 1) * (Math.PI - Math.abs(d)) / 2;
+  const boomErr = Math.abs(wrapPi(boat.boomAngle - idealBoom));
+  // cos falloff hitting zero at 60 degrees of trim error
+  const trim = Math.max(0, Math.cos(boomErr * 1.5));
+  boat.sailForce = CONFIG.sailPower * wind.strength * trim * noGoF;
+  // nobody aboard? the sheet slips loose and the sail luffs — the boat
+  // coasts to a stop instead of sailing away from swimming players forever
+  const crewAboard = chars.some(c => charActive(c) && c.mode === 'deck');
+  if (!crewAboard) boat.sailForce = 0;
+  boat.luffing = boat.sailForce < 0.35;
+
+  // decompose velocity
+  let vf = dot2(boat.vel, fwd), vl = dot2(boat.vel, rgt);
+
+  // forward: sail thrust vs quadratic+linear drag + turning scrub
+  let af = boat.sailForce
+    - CONFIG.fwdDragQuad * vf * Math.abs(vf)
+    - CONFIG.fwdDragLin * vf
+    - CONFIG.turnDrag * Math.abs(boat.angVel) * vf;
+  // lateral: strong keel damping + slight leeway from crosswind
+  const windLat = dot2(windV, rgt);
+  let al = -CONFIG.latResist * vl + CONFIG.leeway * wind.strength * windLat * 0.1;
+
+  // passive windage: hull always drifts a little downwind (even sail-less)
+  const windageA = CONFIG.windageDrift * wind.strength;
+
+  const ax = fwd.x * af + rgt.x * al + windV.x * windageA;
+  const az = fwd.z * af + rgt.z * al + windV.z * windageA;
+  boat.lastAccel.x = ax; boat.lastAccel.z = az;
+  boat.vel.x += ax * dt; boat.vel.z += az * dt;
+
+  // yaw: rudder authority scales with speed through water (useless at rest)
+  const angAcc = boat.rudder * CONFIG.rudderAuthority * vf
+    - CONFIG.yawDamp * boat.angVel;
+  boat.lastAngAccel = angAcc;
+  boat.angVel += angAcc * dt;
+  boat.yaw = wrapPi(boat.yaw + boat.angVel * dt);
+
+  boat.pos.x += boat.vel.x * dt;
+  boat.pos.z += boat.vel.z * dt;
+
+  // heel: crosswind power + turning lean, eased toward target
+  const speed = len2(boat.vel);
+  const heelTarget = clamp(
+    Math.sign(d || 1) * CONFIG.maxHeel * (wind.strength / CONFIG.windStrength) * trim * noGoF * Math.abs(Math.sin(d))
+    + boat.angVel * vf * CONFIG.turnHeel * 0.1, -0.4, 0.4);
+  boat.heel = lerp(boat.heel, heelTarget, clamp(CONFIG.heelLerp * dt, 0, 1));
+
+  collideBoat(dt);
+  updateDocking(dt, speed);
+}
+
+/* ============== obstacle collisions: bounce, shake, knockdown ============== */
+function collideBoat(dt) {
+  const all = obstacles.slice();
+  // pier as a line of circles
+  for (let z = pierA.z; z <= pierB.z; z += 3) all.push({ x: pierA.x, z, r: 4.0 });
+  for (const o of all) {
+    const dx = boat.pos.x - o.x, dz = boat.pos.z - o.z;
+    const dist = Math.hypot(dx, dz), minD = o.r;
+    if (dist >= minD || dist === 0) continue;
+    const nx = dx / dist, nz = dz / dist;
+    const vn = boat.vel.x * nx + boat.vel.z * nz;     // closing if negative
+    // push out
+    boat.pos.x = o.x + nx * minD; boat.pos.z = o.z + nz * minD;
+    if (vn < 0) {
+      const impact = -vn;
+      boat.vel.x -= (1 + CONFIG.bounceRestitution) * vn * nx;
+      boat.vel.z -= (1 + CONFIG.bounceRestitution) * vn * nz;
+      boat.angVel += (Math.random() - 0.5) * impact * 0.3;
+      if (impact > CONFIG.hardHitSpeed) {
+        shake = Math.min(1.2, impact * 0.16);
+        toast('CRASH!', '#ff8787');
+        // knock everyone down + hurl them (in boat-local space, away from impact)
+        const rgt = rightVec(boat.yaw), fwdv = headVec(boat.yaw);
+        const lx = nx * rgt.x + nz * rgt.z, lz = nx * fwdv.x + nz * fwdv.z;
+        for (const c of chars) {
+          if (c.mode !== 'deck' || !charActive(c)) continue;
+          releaseStation(c);
+          c.knock = Math.max(c.knock, 1.2);
+          c.vel.x += lx * CONFIG.bounceKick * (0.7 + Math.random() * 0.6);
+          c.vel.z += lz * CONFIG.bounceKick * (0.7 + Math.random() * 0.6);
+        }
+      }
+    }
+  }
+}
+
+/* =========================== docking =========================== */
+const dockMidZ = (pierA.z + pierB.z) / 2, dockHalfLen = (pierB.z - pierA.z) / 2 + 2;
+function updateDocking(dt, speed) {
+  if (docked) return;
+  const inZone = Math.abs(boat.pos.z - dockMidZ) < dockHalfLen
+    && Math.abs(boat.pos.x - pierA.x) > 3.4 && Math.abs(boat.pos.x - pierA.x) < 9.5;
+  if (inZone && speed < CONFIG.dockSpeed) {
+    dockTimer += dt;
+    if (dockTimer >= CONFIG.dockHold) {
+      docked = true;
+      document.getElementById('msgText').textContent = 'Time: ' + fmtTime(runTime);
+      document.getElementById('msg').style.display = 'block';
+    }
+  } else dockTimer = 0;
+}
+
+/* =========================== stations =========================== */
+function nearestStation(c) {
+  if (c.mode !== 'deck') return null;
+  const dh = Math.hypot(c.pos.x - HELM_POS.x, c.pos.z - HELM_POS.z);
+  const dm = Math.hypot(c.pos.x - SAIL_STA.x, c.pos.z - SAIL_STA.z);
+  if (dh < STATION_R && dh <= dm) return 'helm';
+  if (dm < STATION_R) return 'sail';
+  return null;
+}
+function stationTakenBy(st) { return chars.find(c => c.station === st) || null; }
+function releaseStation(c) { c.station = null; }
+function tryToggleStation(c) {
+  if (c.station) { releaseStation(c); return; }
+  const st = nearestStation(c);
+  if (st && !stationTakenBy(st)) {
+    c.station = st;
+    const sp = st === 'helm' ? HELM_POS : SAIL_STA;
+    c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
+  }
+}
+
+/* ============ boat-local <-> world transforms ============ */
+function localToWorld2(p) {
+  const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+  return v2(boat.pos.x + r.x * p.x + f.x * p.z, boat.pos.z + r.z * p.x + f.z * p.z);
+}
+function worldToLocal2(w) {
+  const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+  const dx = w.x - boat.pos.x, dz = w.z - boat.pos.z;
+  return v2(dx * r.x + dz * r.z, dx * f.x + dz * f.z);
+}
+// FPS movement: WASD strafe/walk relative to the mouse-look direction, Space jumps
+function inputAxes() {
+  return {
+    fwd: (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0),
+    strafe: (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0),
+    j: keys['Space'] ? 1 : 0,
+  };
+}
+const ZERO_AXES = { fwd: 0, strafe: 0, j: 0 };
+function charAxes(c) {
+  if (c === myChar()) return inputAxes();
+  if (netRole === 'host' && c === p2) return c.netAxes;   // the matey's input over the wire
+  return ZERO_AXES;
+}
+
+/* =========================== character update =========================== */
+function goOverboard(c) {
+  const w = localToWorld2(c.pos);
+  releaseStation(c);
+  c.mode = 'water';
+  heelGroup.remove(c.mesh); scene.add(c.mesh);
+  // carry some of the boat's momentum into the drink
+  c.vel = v2(boat.vel.x * 0.4, boat.vel.z * 0.4);
+  c.pos = v2(w.x, w.z);
+  c.facing = wrapPi(boat.yaw + c.facing);   // boat-local facing -> world facing
+  c.jumpY = 0; c.vy = 0;
+  c.knock = 1.0; c.overboardCount++;        // dazed long enough that a fast hull slips away
+  spawnSplash(w.x, w.z, true);
+  toast(c.name + ' OVERBOARD!', c.name === 'P1' ? '#ff8a7a' : '#ffd95e');
+}
+function climbAboard(c) {
+  const lp = worldToLocal2(c.pos);
+  c.mode = 'deck';
+  scene.remove(c.mesh); heelGroup.add(c.mesh);
+  c.pos = v2(clamp(lp.x, -DECK_X + 0.2, DECK_X - 0.2), clamp(lp.z, -DECK_Z + 0.2, DECK_Z - 0.2));
+  c.facing = wrapPi(c.facing - boat.yaw);   // world facing -> boat-local facing
+  c.vel = v2(); c.knock = 0.5; c.jumpY = 0; c.vy = 0;
+  const w = localToWorld2(c.pos);
+  spawnSplash(w.x, w.z, false);
+  toast(c.name + ' back aboard!', '#aef7a2');
+}
+function inGap(z) { return GAPS.some(g => z > g.z0 && z < g.z1); }
+
+function updateChar(c, ci, dt, t) {
+  if (c.knock > 0) c.knock -= dt;
+
+  if (c.mode === 'deck') {
+    // ---- station control: left/right drive rudder or boom ----
+    if (c.station) {
+      // A/D work the station; the mouse looks freely.
+      // Helmsman faces the bow: D = steer right (rudder is sign-flipped internally).
+      // Trimmer faces aft at the sail: D = boom swings to THEIR right.
+      const strafe = charAxes(c).strafe;
+      if (c.station === 'helm') {
+        boat.rudder = clamp(boat.rudder - strafe * CONFIG.rudderRate * D2R * dt,
+          -CONFIG.rudderMax * D2R, CONFIG.rudderMax * D2R);
+      } else {
+        boat.boomAngle = clamp(boat.boomAngle + strafe * CONFIG.boomRate * D2R * dt,
+          -CONFIG.boomMax * D2R, CONFIG.boomMax * D2R);
+      }
+      const sp = c.station === 'helm' ? HELM_POS : SAIL_STA;
+      c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
+      c._animMoving = false;
+      c.mesh.position.set(c.pos.x, DECK_Y, c.pos.z);
+      c.mesh.rotation.set(0, c.facing, 0);
+      return;
+    }
+
+    // ---- vertical: Space jumps (hold to bunny-hop) ----
+    const grounded = c.jumpY <= 0.0001;
+    if (charAxes(c).j && grounded && c.knock <= 0) c.vy = CONFIG.jumpVel;
+    if (!grounded || c.vy > 0) {
+      c.vy -= CONFIG.gravity * dt;
+      c.jumpY = Math.max(0, c.jumpY + c.vy * dt);
+      if (c.jumpY === 0 && c.vy < 0) c.vy = 0;
+    }
+
+    // ---- walking: WASD relative to look direction (boat-local) ----
+    if (c.knock <= 0) {
+      const ax = charAxes(c);
+      if (ax.fwd || ax.strafe) {
+        const n = Math.hypot(ax.fwd, ax.strafe);
+        const acc = CONFIG.walkAccel * (grounded ? 1 : CONFIG.airControl);
+        // screen-right of heading f is (-cos f, sin f)
+        c.vel.x += (Math.sin(c.facing) * ax.fwd - Math.cos(c.facing) * ax.strafe) / n * acc * dt;
+        c.vel.z += (Math.cos(c.facing) * ax.fwd + Math.sin(c.facing) * ax.strafe) / n * acc * dt;
+        if (grounded) c.walkPhase += dt * 11;
+      }
+    }
+    const damp = !grounded ? 0.25 : (c.knock > 0 ? CONFIG.slideDampDown : CONFIG.walkDamp);
+    c.vel.x -= c.vel.x * Math.min(1, damp * dt);
+    c.vel.z -= c.vel.z * Math.min(1, damp * dt);
+
+    // ---- pseudo-inertia: the boat moves under your feet ----
+    const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+    let sx = 0, sz = 0;
+    // linear boat accel (includes centripetal while turning) thrown back at the char
+    sx += -(boat.lastAccel.x * r.x + boat.lastAccel.z * r.z) * CONFIG.inertiaScale;
+    sz += -(boat.lastAccel.x * f.x + boat.lastAccel.z * f.z) * CONFIG.inertiaScale;
+    // centrifugal + Euler from spin
+    const w = boat.angVel, wd = boat.lastAngAccel;
+    sx += (w * w * c.pos.x - wd * c.pos.z) * CONFIG.inertiaScale;
+    sz += (w * w * c.pos.z + wd * c.pos.x) * CONFIG.inertiaScale;
+    // heel: downhill is +x when starboard dips (heel > 0)
+    sx += Math.sin(boat.heel) * CONFIG.heelSlide;
+    // gentle wave wobble so standing still is never perfectly stable
+    sx += Math.sin(t * 0.9 + ci * 2.1) * CONFIG.wobbleSlide;
+    sz += Math.sin(t * 0.73 + 1.7 + ci) * CONFIG.wobbleSlide;
+
+    const slideMag = Math.hypot(sx, sz);
+    if (slideMag > CONFIG.stumbleThresh && c.knock <= 0 && grounded) c.knock = CONFIG.knockTime;
+    c.vel.x += sx * dt; c.vel.z += sz * dt;
+
+    c.pos.x += c.vel.x * dt;
+    c.pos.z += c.vel.z * dt;
+
+    // ---- rails & gangway gaps (a good jump clears the rail anywhere) ----
+    const overRail = c.jumpY > 0.62;
+    if (Math.abs(c.pos.x) > DECK_X) {
+      if (inGap(c.pos.z) || overRail) {
+        if (Math.abs(c.pos.x) > DECK_X + 0.55) { goOverboard(c); return; }
+      } else {
+        c.pos.x = Math.sign(c.pos.x) * DECK_X;
+        c.vel.x *= -0.2;
+      }
+    }
+    if (Math.abs(c.pos.z) > DECK_Z) {
+      if (overRail) {
+        if (Math.abs(c.pos.z) > DECK_Z + 0.55) { goOverboard(c); return; }
+      } else {
+        c.pos.z = Math.sign(c.pos.z) * DECK_Z;
+        c.vel.z *= -0.2;
+      }
+    }
+
+    // ---- visuals ----
+    const moving = Math.hypot(c.vel.x, c.vel.z) > 0.4;
+    c._animMoving = moving && c.knock <= 0;
+    let y = DECK_Y + c.jumpY;
+    if (moving && grounded && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
+    c.mesh.position.set(c.pos.x, y, c.pos.z);
+    if (c.knock > 0) {
+      c.mesh.rotation.x = lerp(c.mesh.rotation.x, 1.35, Math.min(1, 10 * dt));
+      c.mesh.position.y = DECK_Y - 0.25;
+    } else {
+      c.mesh.rotation.x = lerp(c.mesh.rotation.x, 0, Math.min(1, 10 * dt));
+      c.mesh.rotation.y = c.facing;
+    }
+
+  } else {
+    // ---- in the water: free swimming (world space) ----
+    let swimming = false, mx = 0, mz = 0;
+    if (c.knock <= 0) {
+      const ax = charAxes(c);
+      if (ax.fwd || ax.strafe) {
+        const n = Math.hypot(ax.fwd, ax.strafe);
+        mx = (Math.sin(c.facing) * ax.fwd - Math.cos(c.facing) * ax.strafe) / n;
+        mz = (Math.cos(c.facing) * ax.fwd + Math.sin(c.facing) * ax.strafe) / n;
+        // stroke rhythm: power pulses with the arm strokes
+        const stroke = 0.75 + 0.45 * Math.max(0, Math.sin(c.walkPhase * 1.7));
+        c.vel.x += mx * CONFIG.swimSpeed * 4 * stroke * dt;
+        c.vel.z += mz * CONFIG.swimSpeed * 4 * stroke * dt;
+        c.walkPhase += dt * 7;
+        swimming = true;
+      }
+    }
+    c._animMoving = swimming;
+    c.vel.x -= c.vel.x * Math.min(1, 3.0 * dt);
+    c.vel.z -= c.vel.z * Math.min(1, 3.0 * dt);
+    c.pos.x += c.vel.x * dt;
+    c.pos.z += c.vel.z * dt;
+    // can't swim through rocks or the island
+    for (const o of obstacles) {
+      const dx = c.pos.x - o.x, dz = c.pos.z - o.z, dd = Math.hypot(dx, dz);
+      const rr = o.r - 1.2;
+      if (dd < rr && dd > 0) { c.pos.x = o.x + dx / dd * rr; c.pos.z = o.z + dz / dd * rr; }
+    }
+    // ripple + kick splash trail while swimming
+    c._rip = (c._rip ?? 0) - dt;
+    if (Math.hypot(c.vel.x, c.vel.z) > 0.6 && c._rip <= 0) {
+      c._rip = 0.22;
+      spawnWake(c.pos.x, c.pos.z, c.facing, 0.5);
+      if (Math.random() < 0.5) spawnDroplets(c.pos.x, c.pos.z, 1, 1.3, 1.5);
+    }
+    // paddling pose
+    c.mesh.position.set(c.pos.x, 0.05 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
+    c.mesh.rotation.x = 1.25;
+    c.mesh.rotation.y = c.facing;
+    c.mesh.rotation.z = Math.sin(t * 9 + ci * 3) * (swimming ? 0.25 : 0.45);
+    // climb back up ONLY when deliberately swimming INTO the hull
+    const lp = worldToLocal2(c.pos);
+    if (c.knock <= 0 && swimming &&
+        Math.abs(lp.x) < HULL_W / 2 + 0.8 && Math.abs(lp.z) < HULL_L / 2 + 0.8) {
+      const tbx = boat.pos.x - c.pos.x, tbz = boat.pos.z - c.pos.z;
+      const tbl = Math.hypot(tbx, tbz) || 1;
+      if ((mx * tbx + mz * tbz) / tbl > 0.25) climbAboard(c);
+    }
+  }
+}
+
+/* =========================== boat visuals =========================== */
+function updateBoatVisuals(dt, t) {
+  boatGroup.position.set(boat.pos.x, 0, boat.pos.z);
+  boatGroup.rotation.y = boat.yaw;
+  // cosmetic heel + wave bob (never feeds hull physics)
+  const fwd = headVec(boat.yaw);
+  const af = dot2(boat.lastAccel, fwd);
+  heelGroup.rotation.z = -boat.heel + Math.sin(t * 0.8) * CONFIG.bobPitch;
+  heelGroup.rotation.x = Math.sin(t * 0.62 + 1) * CONFIG.bobPitch - af * 0.012;
+  heelGroup.position.y = Math.sin(t * 0.9) * CONFIG.bobAmp + Math.sin(t * 1.7 + 2) * CONFIG.bobAmp * 0.4;
+
+  boomGroup.rotation.y = -boat.boomAngle;
+  wheelGroup.rotation.z = -boat.rudder * 3;
+
+  // sail cloth: belly out when powered, flutter when luffing
+  const d = wrapPi(wind.angle - boat.yaw);
+  const maxF = CONFIG.sailPower * wind.strength;
+  const power = clamp(boat.sailForce / Math.max(0.01, maxF), 0, 1);
+  const luff = 1 - clamp(power * 2.2, 0, 1);
+  const side = Math.sign(Math.sin(d)) || 1;
+  const p = sailGeo.attributes.position.array;
+  for (let iy = 0; iy <= SAIL_H; iy++) for (let ix = 0; ix <= SAIL_W; ix++) {
+    const i = (iy * (SAIL_W + 1) + ix) * 3;
+    const u = ix / SAIL_W, vN = iy / SAIL_H;
+    const shape = Math.sin(u * Math.PI) * Math.sin(vN * Math.PI);
+    let off = side * power * 0.6 * shape;
+    off += Math.sin(t * 26 + u * 7 + vN * 5) * 0.16 * luff * shape;
+    p[i] = sailBase[i]; p[i + 1] = sailBase[i + 1];
+    p[i + 2] = sailBase[i + 2] + off;
+  }
+  sailGeo.attributes.position.needsUpdate = true;
+  sailGeo.computeVertexNormals();
+
+  // pennant points downwind (world-aligned), flutters
+  flagGroup.rotation.y = wrapPi(wind.angle - boat.yaw - Math.PI / 2);
+  const fp = flag.geometry.attributes.position.array;
+  for (let i = 0; i < fp.length; i += 3) {
+    const u = (flagBase[i] + 0.65) / 1.3;
+    fp[i + 2] = Math.sin(t * 10 + u * 6) * 0.12 * u;
+  }
+  flag.geometry.attributes.position.needsUpdate = true;
+
+  if (window.__dockArrow) {
+    __dockArrow.position.y = __dockArrow.userData.baseY + Math.sin(t * 2.2) * 0.6;
+    __dockArrow.rotation.y = t * 1.5;
+  }
+}
+
+/* =========================== first-person cameras =========================== */
+const _eyeV = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _qy = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _qp = new THREE.Quaternion();
+const Y_UP = new THREE.Vector3(0, 1, 0), Z_AX = new THREE.Vector3(0, 0, 1), X_AX = new THREE.Vector3(1, 0, 0);
+function updateFPCamera(c, cam, t) {
+  if (c.mode === 'deck') {
+    // eye rides the deck: position + orientation inherit the boat's yaw AND heel
+    let ey = DECK_Y + CONFIG.eyeHeight + c.jumpY;
+    if (c.knock > 0) ey = DECK_Y + 0.5;
+    else if (c.jumpY <= 0.0001 && Math.hypot(c.vel.x, c.vel.z) > 0.4)
+      ey += Math.abs(Math.sin(c.walkPhase)) * CONFIG.headBob;
+    _eyeV.set(c.pos.x, ey, c.pos.z);
+    boatGroup.updateMatrixWorld();
+    heelGroup.localToWorld(_eyeV);
+    cam.position.copy(_eyeV);
+    heelGroup.getWorldQuaternion(_q);
+    _qy.setFromAxisAngle(Y_UP, c.facing + Math.PI);   // camera looks -z; +PI flips to facing
+    _q.multiply(_qy);
+    _qp.setFromAxisAngle(X_AX, c.pitch); _q.multiply(_qp);
+    if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.55); _q.multiply(_qr); }
+    cam.quaternion.copy(_q);
+  } else {
+    // bobbing at the waterline
+    cam.position.set(c.pos.x, 0.5 + Math.sin(t * 2.6 + c.pos.x) * 0.12, c.pos.z);
+    _qy.setFromAxisAngle(Y_UP, c.facing + Math.PI);
+    _qp.setFromAxisAngle(X_AX, c.pitch); _qy.multiply(_qp);
+    if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.5); _qy.multiply(_qr); }
+    cam.quaternion.copy(_qy);
+  }
+}
+function updateCameras(dt, t) {
+  updateFPCamera(myChar(), cam1, t);
+  if (shake > 0.001) {
+    cam1.position.x += (Math.random() - 0.5) * shake * 0.7;
+    cam1.position.y += (Math.random() - 0.5) * shake * 0.5;
+    cam1.position.z += (Math.random() - 0.5) * shake * 0.7;
+    _qr.setFromAxisAngle(Z_AX, (Math.random() - 0.5) * shake * 0.22);
+    cam1.quaternion.multiply(_qr);
+    shake *= Math.exp(-2.6 * dt);
+  }
+}
+
+/* =========================== HUD =========================== */
+const compassCtx = document.getElementById('compass').getContext('2d');
+const miniCtx = document.getElementById('miniboat').getContext('2d');
+const speedEl = document.getElementById('speed'), timerEl = document.getElementById('timer');
+const windTxtEl = document.getElementById('windtxt');
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(text, color) {
+  toastEl.textContent = text; toastEl.style.color = color || '#ffe066';
+  toastEl.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.opacity = 0; }, 1700);
+  if (netRole === 'host') netSend({ k: 'toast', x: text, col: color });
+}
+function drawCompass() {
+  const ctx = compassCtx, S = 90, c = S / 2;
+  ctx.clearRect(0, 0, S, S);
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(c, c, 38, 0, TAU); ctx.stroke();
+  // arrow shows where the wind BLOWS TOWARD, relative to the boat's bow
+  const a = wrapPi(wind.angle - boat.yaw);
+  ctx.save(); ctx.translate(c, c); ctx.rotate(-a + Math.PI);
+  // (canvas y-down: screen-up should mean "away from camera")
+  ctx.fillStyle = '#74c0fc';
+  ctx.beginPath();
+  ctx.moveTo(0, -30); ctx.lineTo(10, 6); ctx.lineTo(0, -2); ctx.lineTo(-10, 6); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Consolas';
+  ctx.textAlign = 'center'; ctx.fillText('WIND', c, c + 30);
+}
+function drawMiniBoat() {
+  const ctx = miniCtx, S = 110, c = S / 2;
+  ctx.clearRect(0, 0, S, S);
+  ctx.save(); ctx.translate(c, c);
+  // hull outline, bow up
+  ctx.strokeStyle = '#e9c9a8'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(170,120,70,.55)';
+  ctx.beginPath();
+  ctx.moveTo(0, -34); ctx.quadraticCurveTo(15, -16, 13, 22); ctx.lineTo(-13, 22);
+  ctx.quadraticCurveTo(-15, -16, 0, -34); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // boom from mast (negate x: boat-local +x is screen-left when bow-up... keep mirrored to match turning keys)
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  ctx.save(); ctx.translate(0, -6); ctx.rotate(-boat.boomAngle);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 26); ctx.stroke(); ctx.restore();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -6, 3, 0, TAU); ctx.fill();
+  // rudder at stern
+  ctx.strokeStyle = '#74c0fc';
+  ctx.save(); ctx.translate(0, 22); ctx.rotate(-boat.rudder * 1.5);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 12); ctx.stroke(); ctx.restore();
+  // wind arrow relative to boat heading
+  const rel = wrapPi(wind.angle - boat.yaw);
+  ctx.save(); ctx.rotate(-rel + Math.PI); ctx.strokeStyle = '#74c0fc'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, -50); ctx.lineTo(0, -40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -38); ctx.lineTo(4, -44); ctx.lineTo(-4, -44); ctx.closePath();
+  ctx.fillStyle = '#74c0fc'; ctx.fill(); ctx.restore();
+  ctx.restore();
+}
+const prompt1 = document.getElementById('promptP1');
+const lookHintEl = document.getElementById('lookHint');
+function stationPromptText(c, keyName) {
+  if (c.mode !== 'deck') {
+    // overboard: point the swimmer back at the boat
+    const ang = wrapPi(Math.atan2(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z) - c.facing);
+    const dir = Math.abs(ang) < 0.35 ? 'AHEAD' : (ang > 0 ? 'to the RIGHT' : 'to the LEFT');
+    return 'OVERBOARD! Swim — boat is ' + dir;
+  }
+  if (c.station) return keyName + ' — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL');
+  if (!stationTakenBy('helm') &&
+      Math.hypot(c.pos.x - HELM_POS.x, c.pos.z - HELM_POS.z) < STATION_R) return keyName + ' — man the HELM';
+  if (!stationTakenBy('sail') &&
+      Math.hypot(c.pos.x - SAIL_STA.x, c.pos.z - SAIL_STA.z) < STATION_R) return keyName + ' — man the SAIL';
+  return '';
+}
+function updatePrompts() {
+  const t1 = inMenu ? '' : stationPromptText(myChar(), 'E');
+  prompt1.style.display = t1 ? 'block' : 'none';
+  if (t1) prompt1.textContent = t1;
+  lookHintEl.style.display = (!inMenu && !document.pointerLockElement && !dragLook) ? 'block' : 'none';
+}
+
+/* =========================== session + networking ===========================
+   Sea-of-Thieves-style drop-in co-op over WebRTC (PeerJS public broker):
+   the HOST runs the simulation and starts sailing immediately; the matey
+   types the 4-letter code and spawns aboard as the gold pirate.
+   Host -> guest: 20 Hz state snapshots.  Guest -> host: 15 Hz input. */
+const modeSelEl = document.getElementById('modeSelect');
+const netStatusEl = document.getElementById('netStatus');
+const netChipEl = document.getElementById('netchip');
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const peerId = code => 'sailcoop-v1-' + code;
+function netSend(m) { if (conn && conn.open) try { conn.send(m); } catch (e) {} }
+
+function beginPlay() {
+  inMenu = false;
+  modeSelEl.style.display = 'none';
+  runTime = 0; started = false;
+  applyAspect();
+}
+function startSolo() {
+  netRole = null; guestHere = false;
+  p2.mesh.visible = false;
+  beginPlay();
+}
+function startHost() {
+  if (typeof Peer === 'undefined') { netStatusEl.textContent = 'PeerJS failed to load — check the internet.'; return; }
+  let code = '';
+  for (let i = 0; i < 4; i++) code += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];
+  netStatusEl.textContent = 'Raising the flag…';
+  peer = new Peer(peerId(code));
+  peer.on('open', () => {
+    netRole = 'host'; guestHere = false;
+    p2.mesh.visible = false;
+    beginPlay();
+    netChipEl.style.display = 'block';
+    netChipEl.textContent = 'Code: ' + code + ' — waiting for your matey…';
+    window.__sail && (window.__sail.netCode = code);
+  });
+  peer.on('connection', c => {
+    if (conn && conn.open) { c.close(); return; }       // one matey only
+    conn = c;
+    conn.on('open', () => {
+      guestHere = true;
+      releaseStation(p2);
+      if (p2.mesh.parent !== heelGroup) { scene.remove(p2.mesh); heelGroup.add(p2.mesh); }
+      p2.mode = 'deck'; p2.pos.x = 0.9; p2.pos.z = -1.0;
+      p2.vel.x = 0; p2.vel.z = 0; p2.knock = 0; p2.facing = 0;
+      p2.mesh.visible = true;
+      netChipEl.textContent = 'Code: ' + code + ' — matey aboard!';
+      toast('A matey climbed aboard!', '#aef7a2');
+      netSend({ k: 'start' });
+    });
+    conn.on('data', hostOnData);
+    conn.on('close', () => {
+      conn = null; guestHere = false;
+      releaseStation(p2); p2.mesh.visible = false;
+      netChipEl.textContent = 'Code: ' + code + ' — matey left, waiting…';
+      toast('Matey disconnected', '#ff8787');
+    });
+  });
+  peer.on('error', e => {
+    netStatusEl.textContent = 'Network trouble (' + e.type + ') — try Host again.';
+    netChipEl.textContent = 'Net error: ' + e.type;
+  });
+}
+function hostOnData(m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.k === 'i') {
+    p2.netAxes.fwd = clamp(+m.a.fwd || 0, -1, 1);
+    p2.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
+    p2.netAxes.j = m.a.j ? 1 : 0;
+    if (typeof m.f === 'number') p2.facing = wrapPi(m.f);
+    started = true;
+  } else if (m.k === 'g') {
+    if (!docked && p2.mode === 'deck') tryToggleStation(p2);
+  } else if (m.k === 'restart?') {
+    resetState();
+    netSend({ k: 'reset' });
+  }
+}
+function startJoin(codeRaw) {
+  if (typeof Peer === 'undefined') { netStatusEl.textContent = 'PeerJS failed to load — check the internet.'; return; }
+  const code = (codeRaw || '').trim().toUpperCase();
+  if (code.length !== 4) { netStatusEl.textContent = 'Type the 4-letter code first.'; return; }
+  netStatusEl.textContent = 'Rowing over to ' + code + '…';
+  peer = new Peer();
+  peer.on('open', () => {
+    conn = peer.connect(peerId(code));
+    conn.on('open', () => { netStatusEl.textContent = 'Connected — climbing aboard…'; });
+    conn.on('data', guestOnData);
+    conn.on('close', () => { netChipEl.textContent = 'Host left.'; toast('Lost the host…', '#ff8787'); });
+  });
+  peer.on('error', e => { netStatusEl.textContent = 'Could not reach ' + code + ' (' + e.type + ').'; });
+}
+const netT = { boat: null, c: [null, null] };           // guest smoothing targets
+function guestOnData(m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.k === 'start') {
+    netRole = 'guest';
+    p1.mesh.visible = true; p2.mesh.visible = true;
+    p2.pos.x = 0.9; p2.pos.z = -1.0;
+    beginPlay();
+    netChipEl.style.display = 'block';
+    netChipEl.textContent = 'Aboard as the GOLD pirate';
+    return;
+  }
+  if (m.k === 'toast') { toast(m.x, m.col); return; }
+  if (m.k === 'reset') { resetState(); return; }
+  if (m.k === 's') applySnapshot(m);
+}
+function applySnapshot(m) {
+  netT.boat = m.b;
+  boat.vel.x = m.b.vx; boat.vel.z = m.b.vz; boat.angVel = m.b.av;
+  boat.rudder = m.b.rud; boat.boomAngle = m.b.boom; boat.heel = m.b.heel;
+  boat.sailForce = m.b.sf; boat.luffing = m.b.luff;
+  wind.angle = m.w.a; wind.strength = m.w.s;
+  runTime = m.t;
+  if (m.d && !docked) {
+    document.getElementById('msgText').textContent = 'Time: ' + fmtTime(m.t);
+    document.getElementById('msg').style.display = 'block';
+  }
+  docked = m.d;
+  m.c.forEach((cm, i) => {
+    const c = chars[i];
+    netT.c[i] = cm;
+    if (cm.m !== c.mode) {                              // deck <-> water transitions
+      c.mode = cm.m;
+      if (cm.m === 'water') {
+        heelGroup.remove(c.mesh); scene.add(c.mesh);
+        spawnSplash(cm.x, cm.z, true);
+        if (c === myChar()) toast('OVERBOARD!', '#ffd95e');
+      } else {
+        scene.remove(c.mesh); heelGroup.add(c.mesh);
+        const w = localToWorld2(v2(cm.x, cm.z));
+        spawnSplash(w.x, w.z, false);
+      }
+      c.pos.x = cm.x; c.pos.z = cm.z;                   // snap: coordinate space changed
+    }
+    c.knock = cm.kn; c.station = cm.st;
+    if (c !== myChar() && typeof cm.f === 'number') c.facing = cm.f;
+  });
+}
+/* guest frame: smooth toward snapshots, mirror char visuals, send input */
+let inputTimer = 0;
+function guestStep(dt) {
+  simT += dt;
+  handleLocalKeys();
+  const k = 1 - Math.exp(-12 * dt);
+  if (netT.boat) {
+    boat.pos.x = lerp(boat.pos.x, netT.boat.x, k);
+    boat.pos.z = lerp(boat.pos.z, netT.boat.z, k);
+    boat.yaw = wrapPi(boat.yaw + wrapPi(netT.boat.yaw - boat.yaw) * k);
+  }
+  chars.forEach((c, i) => {
+    const tg = netT.c[i]; if (!tg) return;
+    const wasX = c.pos.x, wasZ = c.pos.z;
+    c.pos.x = lerp(c.pos.x, tg.x, k);
+    c.pos.z = lerp(c.pos.z, tg.z, k);
+    c.jumpY = lerp(c.jumpY, tg.y || 0, k);
+    const mv = Math.hypot(c.pos.x - wasX, c.pos.z - wasZ) > 0.012;
+    c._animMoving = mv && c.knock <= 0;
+    // estimate velocity for the googly-eye spring
+    c.vel.x = (c.pos.x - wasX) / Math.max(dt, 1e-4);
+    c.vel.z = (c.pos.z - wasZ) / Math.max(dt, 1e-4);
+    if (mv) c.walkPhase += dt * (c.mode === 'water' ? 7 : 11);
+    if (c.mode === 'deck') {
+      let y = DECK_Y + c.jumpY;
+      if (mv && c.jumpY < 0.01 && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
+      c.mesh.position.set(c.pos.x, c.knock > 0 ? DECK_Y - 0.25 : y, c.pos.z);
+      c.mesh.rotation.set(c.knock > 0 ? 1.35 : 0, c.facing, 0);
+    } else {
+      c.mesh.position.set(c.pos.x, 0.05 + Math.sin(simT * 3 + i) * 0.08, c.pos.z);
+      c.mesh.rotation.set(1.25, c.facing, Math.sin(simT * 9 + i * 3) * (mv ? 0.25 : 0.45));
+      c._rip = (c._rip ?? 0) - dt;
+      if (mv && c._rip <= 0) { c._rip = 0.22; spawnWake(c.pos.x, c.pos.z, c.facing, 0.5); }
+    }
+    animateChar(c, dt, simT);
+  });
+  inputTimer -= dt;
+  if (inputTimer <= 0) {
+    inputTimer = 1 / 15;
+    netSend({ k: 'i', a: ax, f: myChar().facing });
+  }
+}
+/* host frame extra: broadcast snapshots */
+let snapTimer = 0;
+function hostNetStep(dt) {
+  if (netRole !== 'host' || !guestHere) return;
+  snapTimer -= dt;
+  if (snapTimer > 0) return;
+  snapTimer = 1 / 20;
+  netSend({ k: 's',
+    b: { x: boat.pos.x, z: boat.pos.z, yaw: boat.yaw, vx: boat.vel.x, vz: boat.vel.z, av: boat.angVel,
+         rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing },
+    w: { a: wind.angle, s: wind.strength },
+    t: runTime, d: docked,
+    c: chars.map(c => ({ x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station })) });
+}
+function resetState() {
+  boat.pos.x = 0; boat.pos.z = 0; boat.yaw = Math.PI / 2;
+  boat.vel.x = 0; boat.vel.z = 0; boat.angVel = 0;
+  boat.rudder = 0; boat.boomAngle = 20 * D2R; boat.heel = 0;
+  wind.angle = 0;
+  runTime = 0; started = false; docked = false; dockTimer = 0; shake = 0;
+  document.getElementById('msg').style.display = 'none';
+  chars.forEach((c, i) => {
+    releaseStation(c);
+    if (c.mesh.parent !== heelGroup) { scene.remove(c.mesh); heelGroup.add(c.mesh); }
+    c.mode = 'deck'; c.knock = 0; c.vel.x = 0; c.vel.z = 0;
+    c.pos.x = i === 0 ? -0.7 : 0.9; c.pos.z = -1.5;
+    c.facing = 0; c.pitch = 0; c.jumpY = 0; c.vy = 0;
+  });
+  netT.boat = null; netT.c = [null, null];
+}
+document.getElementById('btnSolo').addEventListener('click', startSolo);
+document.getElementById('btnHost').addEventListener('click', startHost);
+document.getElementById('btnJoin').addEventListener('click', () => startJoin(document.getElementById('joinCode').value));
+
+function renderViews() {
+  const v = viewSize();
+  renderer.setViewport(0, 0, v.w, v.h);
+  fancyUniforms.uCamPos.value.copy(cam1.position);
+  const me = myChar();
+  me.mesh.visible = false;                 // never render your own body in first person
+  renderer.render(scene, cam1);
+  me.mesh.visible = charActive(me);
+}
+
+/* =========================== main loop =========================== */
+document.getElementById('restartBtn').addEventListener('click', () => {
+  if (netRole === 'guest') { netSend({ k: 'restart?' }); return; }   // ask the host
+  resetState();
+  if (netRole === 'host') netSend({ k: 'reset' });
+});
+let simT = 0, lastNow = performance.now();
+function handleLocalKeys() {
+  // edge-triggered keys (station grab, water quality)
+  while (pressedQueue.length) {
+    const code = pressedQueue.shift();
+    if (inMenu) continue;
+    started = true;
+    if (code === 'KeyQ') setWaterQuality(!fancyWater);
+    if (code === 'KeyE' && !docked && myChar().mode === 'deck') {
+      if (netRole === 'guest') netSend({ k: 'g' });   // host owns the stations
+      else tryToggleStation(p1);
+    }
+  }
+}
+function physicsStep(dt) {
+  simT += dt;
+  handleLocalKeys();
+  updateWind(dt, simT);
+  if (!docked) {
+    updateBoat(dt);
+    chars.forEach((c, i) => { if (!charActive(c)) return; updateChar(c, i, dt, simT); });
+    if (started) runTime += dt;
+  }
+  chars.forEach(c => animateChar(c, dt, simT));
+}
+let sprayTimer = 0;
+function visualStep(dt) {
+  // wake trail off the stern + bow spray at speed
+  const speed = len2(boat.vel);
+  wakeTimer -= dt;
+  if (speed > 1.2 && wakeTimer <= 0) {
+    wakeTimer = 0.09;
+    const stern = localToWorld2(v2(0, -HULL_L / 2));
+    spawnWake(stern.x, stern.z, boat.yaw, 1.2 + speed * 0.12);
+  }
+  sprayTimer -= dt;
+  if (speed > 5.5 && sprayTimer <= 0) {
+    sprayTimer = 0.13;
+    const bow = localToWorld2(v2(0, HULL_L / 2 - 0.3));
+    spawnDroplets(bow.x, bow.z, 3, 2.4, 2.6);
+  }
+  // sun (shadow box), sky dome and clouds follow the action
+  sun.position.set(boat.pos.x + 80, 120, boat.pos.z + 40);
+  sun.target.position.set(boat.pos.x, 0, boat.pos.z);
+  skyDome.position.copy(cam1.position);
+  for (const cl of clouds) {
+    cl.position.x += Math.sin(wind.angle) * wind.strength * 0.18 * dt;
+    cl.position.z += Math.cos(wind.angle) * wind.strength * 0.18 * dt;
+    if (Math.hypot(cl.position.x - boat.pos.x, cl.position.z - boat.pos.z) > 750) {
+      cl.position.x = boat.pos.x - Math.sin(wind.angle) * 680 + (Math.random() - 0.5) * 320;
+      cl.position.z = boat.pos.z - Math.cos(wind.angle) * 680 + (Math.random() - 0.5) * 320;
+    }
+  }
+  updateWake(dt); updateSplash(dt);
+  updateStreaks(dt, simT, boat.pos.x, boat.pos.z, wind.angle, wind.strength);
+  if (fancyWater) updateFancyWater(simT, boat.pos.x, boat.pos.z);
+  else updateFlatWater(simT, boat.pos.x, boat.pos.z);
+  updateBoatVisuals(dt, simT);
+  updateCameras(dt, simT);
+}
+function drawHud() {
+  speedEl.textContent = len2(boat.vel).toFixed(1);
+  timerEl.textContent = fmtTime(runTime);
+  windTxtEl.textContent = 'Wind ' + wind.strength.toFixed(0) + ' kn';
+  drawCompass(); drawMiniBoat(); updatePrompts();
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = clamp((now - lastNow) / 1000, 0, 0.033);
+  lastNow = now;
+  if (!window.__sailPaused) {
+    if (netRole === 'guest') guestStep(dt);            // host simulates; we smooth + send input
+    else { physicsStep(dt); hostNetStep(dt); }
+  }
+  visualStep(dt);
+  drawHud();
+  renderViews();
+}
+// everything solid casts + receives shadows (skip water, sky, clouds, particles)
+scene.traverse(o => {
+  if (!o.isMesh || o.userData.noShadow) return;
+  if (o === flatWater || o === fancyWaterMesh || o === skyDome) return;
+  if (o.material && o.material.transparent) return;
+  o.castShadow = true;
+  o.receiveShadow = true;
+});
+requestAnimationFrame(frame);
+
+/* ============ dev hook for testing (harmless in play) ============ */
+window.__sail = {
+  CONFIG, boat, wind, chars, keys,
+  _three: { renderer, scene, cam1, cam2 },
+  _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
+  get fancyWater() { return fancyWater; },
+  get netRole() { return netRole; },
+  get guestHere() { return guestHere; },
+  get inMenu() { return inMenu; },
+  look(dyaw, dpitch) { const c = myChar(); c.facing = wrapPi(c.facing + dyaw); c.pitch = clamp(c.pitch + (dpitch || 0), -1.15, 1.15); },
+  get docked() { return docked; },
+  get time() { return runTime; },
+  press(code) { keys[code] = true; pressedQueue.push(code); },
+  release(code) { keys[code] = false; },
+  step(seconds) {            // deterministic fast-forward (no render), mirrors frame()
+    const n = Math.round(seconds * 60);
+    for (let i = 0; i < n; i++) {
+      if (netRole === 'guest') guestStep(1 / 60);
+      else { physicsStep(1 / 60); hostNetStep(1 / 60); }
+      visualStep(1 / 60);
+    }
+  },
+  render() { drawHud(); renderViews(); },
+  setPaused(p) { window.__sailPaused = p; },
+};
+
+</script>
+</body>
+</html>
