@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import type { V2 } from './mathUtil';
 
-export interface Axes { fwd: number; strafe: number; j: number; }
+export interface Axes { fwd: number; strafe: number; j: number; h: number; }
 
 export interface PirateParts {
   eyes: THREE.Mesh[];
@@ -38,10 +38,19 @@ export interface Char {
   animMoving: boolean;
   eye?: EyeState;
   rippleT: number;
+  /* hands: mop + grab/throw */
+  hasMop: boolean;
+  grabbedBy: number;  // index of the grabber, -1 = free
+  holding: boolean;   // currently carrying the other pirate
+  mash: number;       // escape presses accumulated while grabbed
+  scrubT: number;     // current scrub progress in seconds
 }
 
 /* --- net protocol --- */
-export interface CharSnap { x: number; z: number; y: number; f: number; m: CharMode; kn: number; st: Station; }
+export interface CharSnap {
+  x: number; z: number; y: number; f: number; m: CharMode; kn: number; st: Station;
+  gb: number; hm: boolean; sc: number;
+}
 export interface Snapshot {
   k: 's';
   b: { x: number; z: number; yaw: number; vx: number; vz: number; av: number;
@@ -49,6 +58,7 @@ export interface Snapshot {
   w: { a: number; s: number; wid: number; wl: number };
   t: number; d: boolean;
   c: CharSnap[];
+  m: { x: number; z: number; held: number };   // the mop (boat-local; held = char index or -1)
 }
 export type NetMsg =
   | Snapshot
@@ -56,7 +66,9 @@ export type NetMsg =
   | { k: 'i'; a: Axes; f: number }
   | { k: 'g' }
   | { k: 'toast'; x: string; col?: string }
-  | { k: 'fx'; fx: 'poop'; x: number; z: number }
+  | { k: 'fx'; fx: 'poop'; id: number; x: number; z: number }
+  | { k: 'fx'; fx: 'unsplat'; id: number }
+  | { k: 'f' }                                  // matey pressed the hands key (edge)
   | { k: 'reset' }
   | { k: 'restart?' };
 

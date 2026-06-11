@@ -55,6 +55,27 @@ export const CONFIG = {
   // --- swimming leash ---
   swimLeash: 50,           // meters from the boat before the sea washes you back aboard
 
+  // --- seagull poop & mopping ---
+  poopInterval: 21,        // average seconds between bombing runs
+  poopIntervalVar: 8,      // +- randomness on that interval
+  splatsPerPassMax: 3,     // each pass drops 1..this many splats on the deck
+  poopSlip: 3.0,           // deck slide forces are multiplied by this on a splat
+  poopTraction: 0.35,      // walking accel multiplier on a splat (mushy input)
+  poopDampLoss: 0.3,       // ground friction multiplier on a splat (can't stop)
+  splatRadius: 0.5,        // how close counts as "standing on it"
+  scrubTime: 1.5,          // seconds of scrubbing to clear one splat
+  scrubRange: 0.95,        // the mop reaches splats within this range
+  mopCarrySlow: 0.82,      // walk accel multiplier while carrying the mop
+  mopPickupR: 0.65,        // walking this close auto-picks the mop up
+
+  // --- grabbing & throwing (Gang Beasts rule) ---
+  grabRange: 1.6,          // how close you must be to grab the other pirate
+  grabCarrySlow: 0.55,     // grabber walk accel multiplier while carrying
+  victimInput: 0.5,        // grabbed pirate's struggle drags the pair at this fraction
+  escapeMash: 4,           // hands-key presses needed to wriggle free
+  throwForce: 7.5,         // horizontal launch speed (clears the railing)
+  throwArc: 3.6,           // upward launch speed
+
   // --- collisions ---
   bounceRestitution: 0.55, // velocity reflect on rock/island hit
   bounceKick: 5.5,         // impulse thrown into characters on a hard hit

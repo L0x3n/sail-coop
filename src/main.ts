@@ -14,12 +14,13 @@ import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
-import { updateCritters } from './critters';
+import { clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
+import { handsEdge, mop, resetHands, updateHands, updateMopVisual } from './hands';
 import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
-  netCode, requestRestart, sendGrab, startHost, startJoin, startSolo,
+  netCode, requestRestart, sendGrab, sendHandsEdge, startHost, startJoin, startSolo,
 } from './net';
 import type { BoatPreset, Char } from './types';
 
@@ -33,10 +34,11 @@ function makeChar(name: string, shirt: number, hat: number, lx: number, lz: numb
     pos: v2(lx, lz), vel: v2(),
     knock: 0, walkPhase: 0, facing: 0, pitch: 0,
     jumpY: 0, vy: 0,
-    netAxes: { fwd: 0, strafe: 0, j: 0 },
+    netAxes: { fwd: 0, strafe: 0, j: 0, h: 0 },
     overboardCount: 0,
     animMoving: false,
     rippleT: 0,
+    hasMop: false, grabbedBy: -1, holding: false, mash: 0, scrubT: 0,
   };
 }
 registerChars(
@@ -59,6 +61,10 @@ function handleLocalKeys() {
       if (netRole === 'guest') sendGrab();   // host owns the stations
       else tryToggleStation(p1);
     }
+    if (code === 'KeyF' && !session.docked) {
+      if (netRole === 'guest') sendHandsEdge();   // host simulates hands too
+      else handsEdge(p1);
+    }
   }
 }
 
@@ -70,6 +76,7 @@ function physicsStep(dt: number) {
   updateWind(dt, session.simT);
   if (!session.docked) {
     updateBoat(dt);
+    updateHands(dt);
     chars.forEach((c, i) => { if (!charActive(c)) return; updateChar(c, i, dt, session.simT); });
     if (session.started) session.runTime += dt;
   }
@@ -121,7 +128,8 @@ function visualStep(dt: number) {
   updateStreaks(dt, t, boat.pos.x, boat.pos.z, wind.angle, wind.strength);
   updateWater(t, boat.pos.x, boat.pos.z);
   updateWeatherVisuals(dt);
-  updateCritters(dt);
+  updateCritters(dt, t);
+  updateMopVisual(t);
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
   audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));
@@ -180,7 +188,9 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS,
+  env, layout, BOATS, mop,
+  _hands: { handsEdge, updateHands, resetHands },
+  _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
   get netCode() { return netCode; },
   get waterMode() { return waterMode; },
   get mapOpen() { return mapOpen; },

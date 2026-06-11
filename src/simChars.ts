@@ -1,6 +1,6 @@
 import { CONFIG, DECK_Y, RAIL_H, STATION_R } from './config';
 import { D2R, clamp, headVec, lerp, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, chars, env, layout, myChar, netRole, p2, session, tuning } from './state';
+import { boat, chars, env, layout, myChar, netRole, p2, session, slipAt, tuning } from './state';
 import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { heelGroup } from './shipMesh';
@@ -96,6 +96,14 @@ export function washAboard(c: Char) {
 export function updateChar(c: Char, ci: number, dt: number, t: number) {
   if (c.knock > 0) c.knock -= dt;
 
+  // held by the other pirate: position is pinned by updateHands, nothing else applies
+  if (c.grabbedBy >= 0) {
+    c.animMoving = false;
+    c.mesh.position.set(c.pos.x, DECK_Y + c.jumpY, c.pos.z);
+    c.mesh.rotation.set(0, c.facing, Math.sin(t * 13) * 0.18);   // squirming
+    return;
+  }
+
   if (c.mode === 'deck') {
     // ---- station control: A/D work the station; the mouse looks freely ----
     if (c.station) {
@@ -135,19 +143,26 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       if (c.jumpY === 0 && c.vy < 0) c.vy = 0;
     }
 
+    // ---- seagull splats are SLIPPERY: mushy input, no grip, slide city ----
+    const slipping = grounded && slipAt(c.pos.x, c.pos.z);
+
     // ---- walking: WASD relative to look direction (boat-local) ----
     if (c.knock <= 0) {
       const ax = charAxes(c);
       if (ax.fwd || ax.strafe) {
         const n = Math.hypot(ax.fwd, ax.strafe);
-        const acc = CONFIG.walkAccel * (grounded ? 1 : CONFIG.airControl);
+        let acc = CONFIG.walkAccel * (grounded ? 1 : CONFIG.airControl);
+        if (slipping) acc *= CONFIG.poopTraction;
+        if (c.hasMop) acc *= CONFIG.mopCarrySlow;
+        if (c.holding) acc *= CONFIG.grabCarrySlow;
         // screen-right of heading f is (-cos f, sin f)
         c.vel.x += (Math.sin(c.facing) * ax.fwd - Math.cos(c.facing) * ax.strafe) / n * acc * dt;
         c.vel.z += (Math.cos(c.facing) * ax.fwd + Math.sin(c.facing) * ax.strafe) / n * acc * dt;
         if (grounded) c.walkPhase += dt * 11;
       }
     }
-    const damp = !grounded ? 0.25 : (c.knock > 0 ? CONFIG.slideDampDown : CONFIG.walkDamp);
+    let damp = !grounded ? 0.25 : (c.knock > 0 ? CONFIG.slideDampDown : CONFIG.walkDamp);
+    if (slipping) damp *= CONFIG.poopDampLoss;
     c.vel.x -= c.vel.x * Math.min(1, damp * dt);
     c.vel.z -= c.vel.z * Math.min(1, damp * dt);
 
@@ -168,6 +183,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     sx += Math.sin(t * 0.9 + ci * 2.1) * wob;
     sz += Math.sin(t * 0.73 + 1.7 + ci) * wob;
 
+    if (slipping) { sx *= CONFIG.poopSlip; sz *= CONFIG.poopSlip; }   // ice rink
     const slideMag = Math.hypot(sx, sz);
     if (slideMag > CONFIG.stumbleThresh && c.knock <= 0 && grounded) c.knock = CONFIG.knockTime;
     c.vel.x += sx * dt; c.vel.z += sz * dt;

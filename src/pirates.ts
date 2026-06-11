@@ -69,7 +69,9 @@ export function animateChar(c: Char, dt: number, t: number) {
     const arm = P.arms[i], s = i ? 1 : -1;
     let rx = 0, rz = s * -0.18;
     if (c.mode === 'water') { rx = -2.5 + Math.sin(c.walkPhase * 1.7 + i * Math.PI) * 0.95; rz = s * -0.35; }
+    else if (c.grabbedBy >= 0) { rx = -2.9 + Math.sin(t * 14 + i * 2.5) * 0.6; rz = s * -1.1; }   // held aloft, flailing
     else if (c.knock > 0) { rx = -2.7 + Math.sin(t * 11 + i * 2) * 0.45; rz = s * -0.95; }
+    else if (c.scrubT > 0) { rx = -0.7 + Math.sin(t * 16) * 0.5; rz = s * -0.1; }                 // scrubbing
     else if (c.station) { rx = -1.15; rz = s * -0.05; }
     else if (moving) { rx = Math.sin(c.walkPhase + i * Math.PI) * 0.85; }
     arm.rotation.x = lerp(arm.rotation.x, rx, k);
@@ -87,7 +89,7 @@ export function animateChar(c: Char, dt: number, t: number) {
   e.blink -= dt;
   if (e.blink <= 0) { e.blink = 2.2 + Math.random() * 3.5; e.blinkT = 0.13; }
   if (e.blinkT > 0) e.blinkT -= dt;
-  const surprised = c.knock > 0 || c.mode === 'water';
+  const surprised = c.knock > 0 || c.mode === 'water' || c.grabbedBy >= 0;
   for (let i = 0; i < 2; i++) {
     P.pupils[i].position.set(e.px, e.py, 0.075);
     const sc = surprised ? 1.35 : 1;

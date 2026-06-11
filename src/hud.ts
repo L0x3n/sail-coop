@@ -1,10 +1,13 @@
+import * as THREE from 'three';
 import { CONFIG, STATION_R } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
-import { boat, layout, myChar, session, tuning, wind } from './state';
+import { boat, chars, layout, myChar, session, tuning, wind } from './state';
 import { stationTakenBy } from './simChars';
 import { dragLook } from './input';
 import { pierA, dockMidZ } from './world';
 import { dockedChime } from './audio';
+import { cam1 } from './scene';
+import { heelGroup } from './shipMesh';
 import type { Char } from './types';
 
 /* =========================== DOM =========================== */
@@ -24,6 +27,9 @@ const toastEl = el('toast');
 const prompt1 = el('promptP1');
 const lookHintEl = el('lookHint');
 const msgEl = el('msg'), msgTextEl = el('msgText');
+const struggleEl = el('struggle');
+const scrubRingEl = el('scrubRing');
+const _projV = new THREE.Vector3();
 
 /* =========================== toast (+ relay hook for the host) =========================== */
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -134,4 +140,26 @@ export function drawHud(t: number) {
   prompt1.style.display = txt ? 'block' : 'none';
   if (txt) prompt1.textContent = txt;
   lookHintEl.style.display = (!session.inMenu && !document.pointerLockElement && !dragLook) ? 'block' : 'none';
+
+  // struggle indicator above whoever is being carried
+  const victim = chars.find(c => c.grabbedBy >= 0);
+  if (victim && !session.inMenu) {
+    _projV.set(victim.pos.x, 2.4, victim.pos.z);
+    heelGroup.localToWorld(_projV);
+    _projV.project(cam1);
+    if (_projV.z < 1) {
+      struggleEl.style.display = 'block';
+      struggleEl.style.left = ((_projV.x * 0.5 + 0.5) * innerWidth) + 'px';
+      struggleEl.style.top = ((-_projV.y * 0.5 + 0.5) * innerHeight) + 'px';
+      struggleEl.textContent = (victim === myChar() ? 'MASH F! ' : '✊ ') + victim.mash + '/' + CONFIG.escapeMash;
+    } else struggleEl.style.display = 'none';
+  } else struggleEl.style.display = 'none';
+
+  // scrub progress ring
+  const me = myChar();
+  if (me.scrubT > 0) {
+    scrubRingEl.style.display = 'block';
+    const deg = Math.min(360, (me.scrubT / CONFIG.scrubTime) * 360);
+    scrubRingEl.style.background = `conic-gradient(#69db7c ${deg}deg, rgba(255,255,255,.15) ${deg}deg)`;
+  } else scrubRingEl.style.display = 'none';
 }

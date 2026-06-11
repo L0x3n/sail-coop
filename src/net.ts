@@ -3,7 +3,8 @@ import { BOATS, DECK_Y } from './config';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
 import { boat, chars, env, myChar, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { setBoatPreset } from './shipMesh';
-import { placeSplat, setFxRelay } from './critters';
+import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
+import { handsEdge, mop, resetHands } from './hands';
 import type { BoatPreset } from './types';
 import { inputAxes } from './input';
 import { applyAspect, scene } from './scene';
@@ -29,9 +30,12 @@ const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const peerId = (code: string) => 'sailcoop-v1-' + code;
 function netSend(m: NetMsg) { if (conn && conn.open) { try { conn.send(m); } catch { /* gone */ } } }
 
-// host toasts + gull hits get relayed to the matey
+// host toasts + splat add/remove get relayed to the matey
 setToastRelay((text, col) => { if (netRole === 'host') netSend({ k: 'toast', x: text, col }); });
-setFxRelay((x, z) => { if (netRole === 'host') netSend({ k: 'fx', fx: 'poop', x, z }); });
+setFxRelay(
+  (id, x, z) => { if (netRole === 'host') netSend({ k: 'fx', fx: 'poop', id, x, z }); },
+  id => { if (netRole === 'host') netSend({ k: 'fx', fx: 'unsplat', id }); },
+);
 
 let chosenBoat: BoatPreset = BOATS[1];
 
@@ -100,12 +104,17 @@ export function hostOnData(m: NetMsg) {
     p2.netAxes.fwd = clamp(+m.a.fwd || 0, -1, 1);
     p2.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
     p2.netAxes.j = m.a.j ? 1 : 0;
+    p2.netAxes.h = m.a.h ? 1 : 0;
     if (typeof m.f === 'number') p2.facing = wrapPi(m.f);
     session.started = true;
   } else if (m.k === 'g') {
     if (!session.docked && p2.mode === 'deck') tryToggleStation(p2);
+  } else if (m.k === 'f') {
+    handsEdge(p2);
   } else if (m.k === 'restart?') {
     resetState();
+    resetHands();
+    clearSplats();
     netSend({ k: 'reset' });
   }
 }
@@ -138,8 +147,12 @@ export function guestOnData(m: NetMsg) {
     return;
   }
   if (m.k === 'toast') { toast(m.x, m.col); return; }
-  if (m.k === 'fx') { placeSplat(m.x, m.z); return; }
-  if (m.k === 'reset') { resetState(); netT.boat = null; netT.c = [null, null]; return; }
+  if (m.k === 'fx') {
+    if (m.fx === 'poop') placeSplat(m.id, m.x, m.z);
+    else removeSplat(m.id);
+    return;
+  }
+  if (m.k === 'reset') { resetState(); resetHands(); clearSplats(); netT.boat = null; netT.c = [null, null]; return; }
   if (m.k === 's') applySnapshot(m);
 }
 export function applySnapshot(m: Snapshot) {
@@ -152,9 +165,16 @@ export function applySnapshot(m: Snapshot) {
   session.runTime = m.t;
   if (m.d && !session.docked) showDocked(fmtTime(m.t));
   session.docked = m.d;
+  mop.held = m.m.held;
+  mop.x = m.m.x;
+  mop.z = m.m.z;
   m.c.forEach((cm, i) => {
     const c = chars[i];
     netT.c[i] = cm;
+    c.grabbedBy = cm.gb;
+    c.hasMop = cm.hm;
+    c.scrubT = cm.sc;
+    c.holding = m.c.some((o, oi) => oi !== i && o.gb === i);
     if (cm.m !== c.mode) {                              // deck <-> water transitions
       c.mode = cm.m;
       if (cm.m === 'water') {
@@ -229,15 +249,22 @@ export function hostNetStep(dt: number) {
          rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing },
     w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp },
     t: session.runTime, d: session.docked,
-    c: chars.map(c => ({ x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station })),
+    c: chars.map(c => ({
+      x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station,
+      gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT,
+    })),
+    m: { x: mop.x, z: mop.z, held: mop.held },
   });
 }
 
 export function sendGrab() { netSend({ k: 'g' }); }
+export function sendHandsEdge() { netSend({ k: 'f' }); }
 
 export function requestRestart() {
   if (netRole === 'guest') { netSend({ k: 'restart?' }); return; }   // ask the host
   resetState();
+  resetHands();
+  clearSplats();
   netT.boat = null; netT.c = [null, null];
   if (netRole === 'host') netSend({ k: 'reset' });
 }

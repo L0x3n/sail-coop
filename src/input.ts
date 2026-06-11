@@ -46,6 +46,7 @@ export function inputAxes(): Axes {
     fwd: (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0),
     strafe: (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0),
     j: keys['Space'] ? 1 : 0,
+    h: keys['KeyF'] ? 1 : 0,
   };
 }
-export const ZERO_AXES: Axes = { fwd: 0, strafe: 0, j: 0 };
+export const ZERO_AXES: Axes = { fwd: 0, strafe: 0, j: 0, h: 0 };

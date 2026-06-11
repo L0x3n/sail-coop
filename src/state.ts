@@ -43,6 +43,16 @@ export function applyTuning(t: Partial<typeof tuning>) {
   Object.assign(tuning, t);
 }
 
+/* --- seagull splats on the deck (boat-local; meshes live in critters) --- */
+export interface SplatEntry { id: number; x: number; z: number; }
+export const splats: SplatEntry[] = [];
+export function slipAt(x: number, z: number): boolean {
+  for (const s of splats) {
+    if (Math.hypot(s.x - x, s.z - z) < CONFIG.splatRadius) return true;
+  }
+  return false;
+}
+
 /* --- environment: weather + sea state (host-authoritative, synced) --- */
 export const env = {
   weatherId: 0 as 0 | 1 | 2,   // 0 sunny, 1 overcast, 2 squall
