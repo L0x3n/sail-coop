@@ -197,7 +197,8 @@ function updateBomber(dt: number, t: number) {
       run.t = 0;
       const a = Math.random() * Math.PI * 2;
       run.dir.set(Math.sin(a), 0, Math.cos(a));
-      run.from.set(boat.pos.x - run.dir.x * 45, 12.5, boat.pos.z - run.dir.z * 45);
+      const flyH = 13 + 8 * Math.max(0, layout.scale - 1);   // clear even the galleon's rig
+      run.from.set(boat.pos.x - run.dir.x * 45, flyH, boat.pos.z - run.dir.z * 45);
       const n = 1 + Math.floor(Math.random() * CONFIG.splatsPerPassMax);
       run.drops = [];
       for (let i = 0; i < n; i++) {
@@ -228,7 +229,7 @@ function updateBomber(dt: number, t: number) {
         if (b) {
           b.active = true;
           b.mesh.visible = true;
-          b.mesh.position.set(d.tx, 11, d.tz);
+          b.mesh.position.set(d.tx, 11 + 8 * Math.max(0, layout.scale - 1), d.tz);
           b.mesh.userData.tx = d.tx;
           b.mesh.userData.tz = d.tz;
           b.vy = -1.0;

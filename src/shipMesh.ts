@@ -245,7 +245,7 @@ export function buildShip(S: number) {
   }
 
   /* ---------------- mast, boom, sails, rigging, flag ---------------- */
-  const mastH = clamp(7.5 * S, 5.4, 10.4);
+  const mastH = clamp(7.5 * S, 5.4, 23);
   const mastX = MAST_POS.x, mastZ = MAST_POS.z * S;
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, mastH, 8), woodDark);
   mast.position.set(mastX, DECK_Y + mastH / 2, mastZ);
