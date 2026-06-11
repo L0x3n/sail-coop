@@ -45,14 +45,16 @@ canvas.webgl { display: block; }
                     background: rgba(255,255,255,.08); color: #fff; }
 .joinrow { display: flex; gap: 10px; }
 .joinrow button { min-width: 0; }
-.boatrow { display: flex; gap: 12px; }
-.boatcard { font-family: inherit; width: 150px; padding: 10px 6px; cursor: pointer;
+.boatrow { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+/* #modeSelect button sets min-width:420px — boat cards must beat that specificity */
+#modeSelect .boatcard { font-family: inherit; width: 150px; min-width: 0; padding: 10px 6px;
+            font-size: 14px; cursor: pointer;
             border-radius: 12px; border: 2px solid rgba(255,255,255,.25);
             background: rgba(255,255,255,.07); color: #fff; }
-.boatcard b { display: block; font-size: 18px; margin-bottom: 4px; }
-.boatcard span { font-size: 12px; opacity: .8; line-height: 1.4; }
-.boatcard:hover { background: rgba(255,255,255,.14); }
-.boatcard.sel { border-color: #ffd95e; background: rgba(255,217,94,.16); }
+#modeSelect .boatcard b { display: block; font-size: 18px; margin-bottom: 4px; }
+#modeSelect .boatcard span { font-size: 12px; opacity: .8; line-height: 1.4; }
+#modeSelect .boatcard:hover { background: rgba(255,255,255,.14); }
+#modeSelect .boatcard.sel { border-color: #ffd95e; background: rgba(255,217,94,.16); }
 #struggle { display: none; transform: translate(-50%, -100%); font-size: 16px; font-weight: bold;
             color: #ffd95e; background: rgba(0,0,0,.6); padding: 3px 10px; border-radius: 8px;
             border: 1px solid rgba(255,217,94,.6); white-space: nowrap; }
