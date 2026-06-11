@@ -107,10 +107,11 @@ function drawMiniBoat(t: number) {
 /* =========================== prompts =========================== */
 function stationPromptText(c: Char, keyName: string): string {
   if (c.mode !== 'deck') {
-    // overboard: point the swimmer back at the boat
+    // overboard: point the swimmer back at the boat + leash distance
+    const dist = Math.hypot(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z);
     const ang = wrapPi(Math.atan2(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z) - c.facing);
     const dir = Math.abs(ang) < 0.35 ? 'AHEAD — swim into the hull!' : (ang > 0 ? 'to the LEFT' : 'to the RIGHT');
-    return 'OVERBOARD! Boat is ' + dir;
+    return 'OVERBOARD ' + (dist | 0) + 'm / ' + CONFIG.swimLeash + 'm — boat is ' + dir;
   }
   if (c.station) return keyName + ' — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL');
   if (!stationTakenBy('helm') &&

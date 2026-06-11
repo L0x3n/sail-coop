@@ -49,7 +49,11 @@ export const CONFIG = {
   // --- jumping ---
   jumpVel: 5.2,            // takeoff speed (clears the 0.62-high rail)
   gravity: 14,             // pulls jumpers back down to the deck
-  airControl: 0.3,         // walk authority while airborne
+  airControl: 0.45,        // walk authority while airborne
+  jumpBoost: 1.5,          // horizontal hop impulse at takeoff (vault the rail from standstill)
+
+  // --- swimming leash ---
+  swimLeash: 50,           // meters from the boat before the sea washes you back aboard
 
   // --- collisions ---
   bounceRestitution: 0.55, // velocity reflect on rock/island hit

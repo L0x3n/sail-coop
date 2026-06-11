@@ -79,6 +79,19 @@ export function climbAboard(c: Char) {
 }
 const inGap = (z: number) => GAPS.some(g => z > g.z0 && z < g.z1);
 
+/* drifted past the leash: the sea spits you back on deck */
+export function washAboard(c: Char) {
+  c.mode = 'deck';
+  scene.remove(c.mesh);
+  heelGroup.add(c.mesh);
+  c.pos = v2(c.name === 'P1' ? -0.5 : 0.5, -1.0);
+  c.facing = 0; c.vel = v2();
+  c.knock = 0.8; c.jumpY = 0; c.vy = 0;
+  const w = localToWorld2(c.pos);
+  spawnSplash(w.x, w.z, true);
+  toast(c.name + ' washed back aboard!', '#74c0fc');
+}
+
 /* =========================== character update =========================== */
 export function updateChar(c: Char, ci: number, dt: number, t: number) {
   if (c.knock > 0) c.knock -= dt;
@@ -106,7 +119,16 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
 
     // ---- vertical: Space jumps (hold to bunny-hop) ----
     const grounded = c.jumpY <= 0.0001;
-    if (charAxes(c).j && grounded && c.knock <= 0) c.vy = CONFIG.jumpVel;
+    if (charAxes(c).j && grounded && c.knock <= 0) {
+      c.vy = CONFIG.jumpVel;
+      // hop toward where you're steering — lets you vault the rail from a standstill
+      const jx = charAxes(c);
+      if (jx.fwd || jx.strafe) {
+        const n = Math.hypot(jx.fwd, jx.strafe);
+        c.vel.x += (Math.sin(c.facing) * jx.fwd - Math.cos(c.facing) * jx.strafe) / n * CONFIG.jumpBoost;
+        c.vel.z += (Math.cos(c.facing) * jx.fwd + Math.sin(c.facing) * jx.strafe) / n * CONFIG.jumpBoost;
+      }
+    }
     if (!grounded || c.vy > 0) {
       c.vy -= CONFIG.gravity * dt;
       c.jumpY = Math.max(0, c.jumpY + c.vy * dt);
@@ -212,6 +234,11 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       const dx = c.pos.x - o.x, dz = c.pos.z - o.z, dd = Math.hypot(dx, dz);
       const rr = o.r - 1.2;
       if (dd < rr && dd > 0) { c.pos.x = o.x + dx / dd * rr; c.pos.z = o.z + dz / dd * rr; }
+    }
+    // swim leash: too far from the boat and the sea washes you back aboard
+    if (Math.hypot(c.pos.x - boat.pos.x, c.pos.z - boat.pos.z) > CONFIG.swimLeash) {
+      washAboard(c);
+      return;
     }
     // ripple + kick splash trail while swimming
     c.rippleT -= dt;
