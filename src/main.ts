@@ -5,7 +5,7 @@ import { boat, charActive, chars, env, game, layout, myChar, netRole, guestHere,
 import { keys, pressedQueue } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
-import { fancyUniforms, fancyWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
+import { fancyUniforms, fancyWaterMesh, fftWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
 import { buildWorld, islandPos, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
@@ -16,6 +16,7 @@ import { localToWorld2, resetState, tryToggleStation, updateChar } from './simCh
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
 import { daynight, updateDayNight } from './daynight';
+import { N as FFT_N, PATCH as FFT_PATCH, heightField, oceanHeight, selfTest, updateOcean } from './fftOcean';
 import { director, updateDirector } from './director';
 import { bomberPos, clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
@@ -58,7 +59,7 @@ registerChars(
 );
 
 buildWorld();
-enableShadows([flatWater, fancyWaterMesh, skyDome]);
+enableShadows([flatWater, fancyWaterMesh, fftWaterMesh, skyDome]);
 
 /* =========================== input edge handling =========================== */
 function handleLocalKeys() {
@@ -269,4 +270,5 @@ window.__sail = {
   render() { drawHud(session.simT); drawMap(); renderViews(); },
   setPaused(p: boolean) { window.__sailPaused = p; },
   setTime(v: number) { daynight.t = ((v % 1) + 1) % 1; },
+  _fft: { N: FFT_N, PATCH: FFT_PATCH, heightField, oceanHeight, selfTest, updateOcean },
 };

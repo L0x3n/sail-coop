@@ -1,17 +1,22 @@
 import * as THREE from 'three';
 import { scene, sun, SKY } from './scene';
+import { wind, env } from './state';
 import { makeSeaFoamTexture } from './textures';
+import { PATCH, heightTexture, updateOcean } from './fftOcean';
 
 /* =========================== water ===========================
-   Two interchangeable surfaces (Q toggles). Purely cosmetic — hull
-   physics never reads the water. Both follow the boat (snapped to a
-   grid so the surface pattern stays world-anchored). */
-/* water modes: 0 = flat, 1 = fancy, 2 = AAA (towering swell that rocks the deck) */
+   Three interchangeable surfaces (Q toggles). FLAT and FANCY are
+   cosmetic-only (physics ignores them). The FFT ocean is the real
+   thing: a spectrum-based wave field computed on the CPU, uploaded to
+   the GPU here AND sampled by the boat (simBoat) so the hull rides the
+   exact surface you see. All follow the boat, snapped to a grid so the
+   pattern stays world-anchored. */
+/* water modes: 0 = flat, 1 = fancy (Gerstner), 2 = FFT ocean (CPU/GPU synced) */
 export let waterMode = (() => {
   const m = parseInt(localStorage.getItem('sail.waterMode') ?? '1', 10);
   return (m >= 0 && m <= 2 ? m : 1) as 0 | 1 | 2;
 })();
-export const WATER_MODE_NAMES = ['FLAT', 'FANCY', 'AAA'];
+export const WATER_MODE_NAMES = ['FLAT', 'FANCY', 'FFT'];
 export let fancyWater = waterMode > 0;
 const WATER_SIZE = 1400;
 
@@ -49,43 +54,9 @@ export const fancyUniforms = {
   uFoam: { value: makeSeaFoamTexture() },
   uFogNear: { value: 260 }, uFogFar: { value: 850 },
 };
-const fancyMat = new THREE.ShaderMaterial({
-  uniforms: fancyUniforms,
-  vertexShader: `
-    uniform float uTime; uniform float uSwell; uniform vec2 uOffset;
-    varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
-    vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
-      float k = 6.28318 / len;
-      float c = sqrt(9.8 / k);
-      vec2 dir = normalize(d);
-      float f = k * (dot(dir, p.xz) - c * uTime);
-      float a = steep / k;
-      tang += vec3(-dir.x*dir.x*steep*sin(f), dir.x*steep*cos(f), -dir.x*dir.y*steep*sin(f));
-      binc += vec3(-dir.x*dir.y*steep*sin(f), dir.y*steep*cos(f), -dir.y*dir.y*steep*sin(f));
-      return vec3(dir.x*a*cos(f), a*sin(f), dir.y*a*cos(f));
-    }
-    void main() {
-      vec3 p = position;
-      p.xz += uOffset;
-      vec3 tang = vec3(1.0,0.0,0.0), binc = vec3(0.0,0.0,1.0);
-      vec3 base = p;
-      vec3 off = vec3(0.0);
-      // two long rollers carry the sea, the rest is texture on top of them
-      off += gerstner(vec2( 1.0, 0.35), 0.115 * uSwell, 52.0 + 22.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2(-0.45, 1.0), 0.125 * uSwell, 31.0 + 12.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2( 0.85,-0.55), 0.115 * uSwell, 17.0, base, tang, binc);
-      off += gerstner(vec2( 0.15, 1.0),  0.095 * uSwell,  9.5, base, tang, binc);
-      off += gerstner(vec2(-0.9, -0.2),  0.065 * uSwell,  5.2, base, tang, binc);
-      off += gerstner(vec2( 0.55, 0.8),  0.045 * uSwell,  3.1, base, tang, binc);
-      p += off;
-      p.xz -= uOffset;
-      vCrest = off.y;
-      vNrm = normalize(cross(binc, tang));
-      vec4 wp = modelMatrix * vec4(p, 1.0);
-      vPos = wp.xyz;
-      gl_Position = projectionMatrix * viewMatrix * wp;
-    }`,
-  fragmentShader: `
+/* the lit surface — shared by the Gerstner (fancy) and FFT meshes. It reads
+   vNrm + vCrest + vPos from whichever vertex shader produced the surface. */
+const FRAG = `
     uniform vec3 uSunDir, uCamPos, uDeep, uShallow, uSss, uSky;
     uniform float uFogNear, uFogFar, uTime;
     uniform sampler2D uFoam;
@@ -137,7 +108,44 @@ const fancyMat = new THREE.ShaderMaterial({
       alpha = mix(alpha, 1.0, foamAll * 0.8);
       alpha = mix(alpha, 1.0, fogF);
       gl_FragColor = vec4(col, alpha);
+    }`;
+const fancyMat = new THREE.ShaderMaterial({
+  uniforms: fancyUniforms,
+  vertexShader: `
+    uniform float uTime; uniform float uSwell; uniform vec2 uOffset;
+    varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
+    vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
+      float k = 6.28318 / len;
+      float c = sqrt(9.8 / k);
+      vec2 dir = normalize(d);
+      float f = k * (dot(dir, p.xz) - c * uTime);
+      float a = steep / k;
+      tang += vec3(-dir.x*dir.x*steep*sin(f), dir.x*steep*cos(f), -dir.x*dir.y*steep*sin(f));
+      binc += vec3(-dir.x*dir.y*steep*sin(f), dir.y*steep*cos(f), -dir.y*dir.y*steep*sin(f));
+      return vec3(dir.x*a*cos(f), a*sin(f), dir.y*a*cos(f));
+    }
+    void main() {
+      vec3 p = position;
+      p.xz += uOffset;
+      vec3 tang = vec3(1.0,0.0,0.0), binc = vec3(0.0,0.0,1.0);
+      vec3 base = p;
+      vec3 off = vec3(0.0);
+      // two long rollers carry the sea, the rest is texture on top of them
+      off += gerstner(vec2( 1.0, 0.35), 0.115 * uSwell, 52.0 + 22.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2(-0.45, 1.0), 0.125 * uSwell, 31.0 + 12.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2( 0.85,-0.55), 0.115 * uSwell, 17.0, base, tang, binc);
+      off += gerstner(vec2( 0.15, 1.0),  0.095 * uSwell,  9.5, base, tang, binc);
+      off += gerstner(vec2(-0.9, -0.2),  0.065 * uSwell,  5.2, base, tang, binc);
+      off += gerstner(vec2( 0.55, 0.8),  0.045 * uSwell,  3.1, base, tang, binc);
+      p += off;
+      p.xz -= uOffset;
+      vCrest = off.y;
+      vNrm = normalize(cross(binc, tang));
+      vec4 wp = modelMatrix * vec4(p, 1.0);
+      vPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
     }`,
+  fragmentShader: FRAG,
   transparent: true,
   side: THREE.DoubleSide,
 });
@@ -147,30 +155,77 @@ export const fancyWaterMesh = new THREE.Mesh(fancyGeo, fancyMat);
 fancyWaterMesh.frustumCulled = false;
 scene.add(fancyWaterMesh);
 
+/* --- FFT ocean: the vertex shader displaces by the shared height field
+   (world-anchored, tiled by PATCH) and derives the normal from it. The
+   CPU samples the SAME field for the boat, so they cannot disagree. --- */
+const fftUniforms = Object.assign({}, fancyUniforms, {
+  uHeight: { value: heightTexture },
+  uPatch: { value: PATCH },
+});
+const fftMat = new THREE.ShaderMaterial({
+  uniforms: fftUniforms,
+  vertexShader: `
+    uniform sampler2D uHeight; uniform float uPatch;
+    varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);   // world XZ before displacing
+      vec2 uv = wp.xz / uPatch;
+      float e = 1.0 / 64.0;                            // one texel (N = 64)
+      float h  = texture2D(uHeight, uv).r;
+      float hL = texture2D(uHeight, uv - vec2(e, 0.0)).r;
+      float hR = texture2D(uHeight, uv + vec2(e, 0.0)).r;
+      float hD = texture2D(uHeight, uv - vec2(0.0, e)).r;
+      float hU = texture2D(uHeight, uv + vec2(0.0, e)).r;
+      float dhx = (hR - hL) / (2.0 * e * uPatch);      // slope in world space
+      float dhz = (hU - hD) / (2.0 * e * uPatch);
+      vNrm = normalize(vec3(-dhx, 1.0, -dhz));
+      vCrest = h;
+      wp.y += h;
+      vPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: FRAG,
+  transparent: true,
+  side: THREE.DoubleSide,
+});
+const fftGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 224, 224);
+fftGeo.rotateX(-Math.PI / 2);
+export const fftWaterMesh = new THREE.Mesh(fftGeo, fftMat);
+fftWaterMesh.frustumCulled = false;
+fftWaterMesh.visible = false;
+scene.add(fftWaterMesh);
+
 export function updateWater(t: number, cx: number, cz: number) {
-  if (fancyWater) {
+  fancyUniforms.uTime.value = t;                          // shared by fancy + fft (ripples/foam)
+  if (waterMode === 1) {
     fancyWaterMesh.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
-    fancyUniforms.uTime.value = t;
     fancyUniforms.uOffset.value.set(fancyWaterMesh.position.x, fancyWaterMesh.position.z);
-    // uCamPos is set per-view at render time
+  } else if (waterMode === 2) {
+    fftWaterMesh.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
+    // evolve the spectrum: amplitude rides the sea state; the boat reads the same field
+    updateOcean(t, wind.angle, wind.strength, Math.min(1.8, Math.max(0.6, env.swell)));
   } else {
     updateFlatWater(t, cx, cz);
   }
+  // uCamPos is set per-view at render time
 }
 
 export function setWaterMode(m: 0 | 1 | 2) {
   waterMode = m;
   fancyWater = m > 0;
-  fancyWaterMesh.visible = fancyWater;
-  flatWater.visible = !fancyWater;
+  flatWater.visible = m === 0;
+  fancyWaterMesh.visible = m === 1;
+  fftWaterMesh.visible = m === 2;
   localStorage.setItem('sail.waterMode', String(m));
 }
 export function cycleWater(): string {
   setWaterMode(((waterMode + 1) % 3) as 0 | 1 | 2);
   return WATER_MODE_NAMES[waterMode];
 }
-/* combined sea state (weather x open-sea x AAA), clamped before self-intersection */
+/* sea state for the Gerstner swell, clamped before the wave self-intersects */
 export function setSwell(v: number) {
   fancyUniforms.uSwell.value = Math.min(1.9, Math.max(0.55, v));
 }
+/* is the FFT ocean live? (simBoat reads the wave field only then) */
+export const fftActive = () => waterMode === 2;
 setWaterMode(waterMode);

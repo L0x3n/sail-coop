@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y, MAST_POS } from './config';
-import { clamp, dot2, headVec, lerp, wrapPi } from './mathUtil';
+import { clamp, dot2, headVec, lerp, rightVec, wrapPi } from './mathUtil';
 import { scene } from './scene';
 import { applyLayoutScale, applyTuning, boat, env, layout, owned, shipInfo, tuning, wind } from './state';
 import { makePlankTexture, makeSailTexture } from './textures';
 import { dockArrow } from './world';
+import { fftActive } from './water';
+import { oceanHeight } from './fftOcean';
 import * as audio from './audio';
 import type { BoatPreset } from './types';
 
@@ -450,13 +452,29 @@ export function updateBoatVisuals(dt: number, t: number) {
   if (!shipRig) return;
   boatGroup.position.set(boat.pos.x, 0, boat.pos.z);
   boatGroup.rotation.y = boat.yaw;
-  // cosmetic heel + wave bob — scaled by the sea state (weather / open sea / AAA water)
+  // heel + wave motion. With the FFT ocean live the hull RIDES the real
+  // surface (sampled at bow/stern/port/stbd — the same field the GPU shows);
+  // otherwise it's the cosmetic sine bob scaled by the sea state.
   const swell = env.swell;
   const fwd = headVec(boat.yaw);
   const af = dot2(boat.lastAccel, fwd);
-  heelGroup.rotation.z = -boat.heel + Math.sin(t * 0.8) * CONFIG.bobPitch * swell - env.bigWave * 0.2;
-  heelGroup.rotation.x = Math.sin(t * 0.62 + 1) * CONFIG.bobPitch * swell - af * 0.012;
-  heelGroup.position.y = (Math.sin(t * 0.9) * CONFIG.bobAmp + Math.sin(t * 1.7 + 2) * CONFIG.bobAmp * 0.4) * swell
+  let waveY = 0, wavePitch = 0, waveRoll = 0, cosmetic = 1;
+  if (fftActive()) {
+    const r = rightVec(boat.yaw);
+    const La = layout.hullL * 0.42, Ba = layout.hullW * 0.5;
+    const hF = oceanHeight(boat.pos.x + fwd.x * La, boat.pos.z + fwd.z * La);
+    const hA = oceanHeight(boat.pos.x - fwd.x * La, boat.pos.z - fwd.z * La);
+    const hP = oceanHeight(boat.pos.x - r.x * Ba, boat.pos.z - r.z * Ba);
+    const hS = oceanHeight(boat.pos.x + r.x * Ba, boat.pos.z + r.z * Ba);
+    waveY = (hF + hA + hP + hS) * 0.25;            // heave with the swell under the hull
+    wavePitch = Math.atan2(hF - hA, 2 * La);       // pitch along the wave slope
+    waveRoll = Math.atan2(hP - hS, 2 * Ba);
+    cosmetic = 0.3;                                 // damp the fake bob so they don't stack
+  }
+  heelGroup.rotation.z = -boat.heel + waveRoll + Math.sin(t * 0.8) * CONFIG.bobPitch * swell * cosmetic - env.bigWave * 0.2;
+  heelGroup.rotation.x = wavePitch + Math.sin(t * 0.62 + 1) * CONFIG.bobPitch * swell * cosmetic - af * 0.012;
+  heelGroup.position.y = waveY
+    + (Math.sin(t * 0.9) * CONFIG.bobAmp + Math.sin(t * 1.7 + 2) * CONFIG.bobAmp * 0.4) * swell * cosmetic
     + Math.abs(env.bigWave) * 0.4;
 
   const heelRate = Math.abs(boat.heel - lastHeel) / Math.max(dt, 1e-4);
