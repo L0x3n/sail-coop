@@ -217,13 +217,14 @@ syfte), kraken-tentakel som bonkas med moppen.
 
 ## Fas 5 — Skala & utsläpp
 
-- Deploy till URL (GitHub Pages) så ingen skickar filer.
+- ✅ **Deploy till URL**: https://l0x3n.github.io/sail-coop/ (GitHub Pages,
+  repo github.com/L0x3n/sail-coop; omdeploy = `./deploy.ps1`).
 - Reläserver (Socket.IO på Render, Sviten-receptet) om PeerJS-brokern
-  strular för folk — same protokoll, annan transport.
+  strular för folk — same protokoll, annan transport. (VÄNTAR på behov.)
 - 3–4 spelare utvärderas EFTER att 2P-rundloopen är bevisad (fler händer
-  = behöver fler jobb; kanon+ösa+pråm måste finnas först).
-- Balanspass: båtarna får lastkapacitet som identitet (skiff = 4 lådor
-  och kvick; galleon = 14 lådor och ett vandrande försäkringsärende).
+  = behöver fler jobb; kanon+pråm finns, ösa väntar i Fas 4).
+- ✅ Balanspass: båtarna har lastkapacitet som identitet (skiff 4 lådor
+  och kvick / sloop 6 / galleon 14 — ett vandrande försäkringsärende).
 
 ---
 
