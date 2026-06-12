@@ -43,6 +43,9 @@ export function applyTuning(t: Partial<typeof tuning>) {
   Object.assign(tuning, t);
 }
 
+/* --- accumulated mouse-drag from the matey while they hold someone (net) --- */
+export const netDrag = { x: 0, y: 0 };
+
 /* --- seagull splats on the deck (boat-local; meshes live in critters) --- */
 export interface SplatEntry { id: number; x: number; z: number; }
 export const splats: SplatEntry[] = [];

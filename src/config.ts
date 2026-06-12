@@ -42,7 +42,7 @@ export const CONFIG = {
   inertiaScale: 1.5,       // how strongly boat accel/turn throws characters
   heelSlide: 26,           // slide accel per sin(heel) — the big "lean" force
   stumbleThresh: 7.0,      // pseudo-force accel that knocks a standing char down
-  knockTime: 0.9,          // seconds down after a stumble
+  knockTime: 1.2,          // seconds down after a stumble
   swimSpeed: 2.0,          // swim speed (climb back only when swimming INTO the hull)
   wobbleSlide: 0.28,       // tiny always-on wave wobble force on deck
 
@@ -70,17 +70,21 @@ export const CONFIG = {
   mopThrowForce: 8.5,      // horizontal mop launch speed
   mopThrowArc: 3.2,        // upward mop launch speed
   whackRange: 1.7,         // mop melee reach (LMB tap)
-  whackKnock: 0.9,         // seconds floored by a bonk
+  whackKnock: 1.2,         // seconds floored by a bonk
   whackKick: 4.2,          // shove from a bonk
   whackCooldown: 0.6,      // seconds between swings
 
-  // --- grabbing & throwing (Gang Beasts rule) ---
+  // --- grabbing & dragging (Gang Beasts rule) ---
   grabRange: 1.6,          // how close you must be to grab the other pirate
-  grabCarrySlow: 0.55,     // grabber walk accel multiplier while carrying
+  grabCarrySlow: 0.5,      // grabber moves 50% slower while holding someone
   victimInput: 0.5,        // grabbed pirate's struggle drags the pair at this fraction
   escapeMash: 4,           // hands-key presses needed to wriggle free
-  throwForce: 7.5,         // horizontal launch speed (clears the railing)
-  throwArc: 3.6,           // upward launch speed
+  dragSens: 0.0045,        // mouse-drag: radians/meters per pixel while holding
+  dragPull: 11,            // how hard the hold reels the victim toward the hold point
+  stationGripPull: 3.5,    // ...but someone clinging to a station resists this much
+  stationDragOff: 0.9,     // drag them this far from the wheel to break their grip
+  throwForce: 3.5,         // releasing = a small shove, not a cannon launch
+  throwArc: 2.0,           // little hop on release (enough to tip over a rail edge)
 
   // --- collisions ---
   bounceRestitution: 0.55, // velocity reflect on rock/island hit

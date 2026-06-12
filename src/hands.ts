@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
-import { clamp, headVec, wrapPi } from './mathUtil';
-import { charActive, chars, layout } from './state';
+import { clamp, headVec, lerp, wrapPi } from './mathUtil';
+import { charActive, chars, layout, netDrag, p1 } from './state';
 import { heelGroup } from './shipMesh';
 import { charAxes, localToWorld2, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
 import { spawnSplash } from './effects';
+import { localDrag } from './input';
 import { toast } from './hud';
 import * as audio from './audio';
 import type { Char } from './types';
@@ -173,20 +174,31 @@ export function handsEdge(c: Char) {
     mine.vy = CONFIG.mopThrowArc;
     return;
   }
-  // grab the other pirate
+  // grab the other pirate — they STAY where they are; you have to DRAG them
   const other = chars[1 - idx];
   if (!other || !charActive(other) || other.mode !== 'deck') return;
   if (other.grabbedBy >= 0 || c.grabbedBy >= 0) return;
-  if (Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) > CONFIG.grabRange) return;
-  if (other.station) toast(other.name + ' got yanked off the ' + other.station + '!', '#ffd95e');
-  releaseStation(other);
+  const dx = other.pos.x - c.pos.x, dz = other.pos.z - c.pos.z;
+  const d = Math.hypot(dx, dz);
+  if (d > CONFIG.grabRange) return;
   const theirs = mopOf(other);
   if (theirs) { theirs.held = -1; theirs.x = other.pos.x; theirs.z = other.pos.z; other.hasMop = false; }
   other.grabbedBy = idx;
   other.mash = 0;
   c.holding = true;
   c.scrubT = 0;
+  // hold point starts exactly at the victim: no teleport, no instant yank
+  holds.set(c, {
+    ang: wrapPi(Math.atan2(dx, dz) - c.facing),
+    dist: clamp(d, 0.55, 1.55),
+    strain: 0,
+  });
+  if (other.station) toast(other.name + ' is clinging to the ' + other.station + ' — DRAG them off!', '#ffd95e');
 }
+
+/* the grabber's mouse swings the hold point around them */
+interface Hold { ang: number; dist: number; strain: number; }
+const holds = new Map<Char, Hold>();
 
 /* --- LMB tap: WHACK the matey with the mop (if not scrubbing) --- */
 const whackCd = new Map<Char, number>();
@@ -212,6 +224,7 @@ function breakFree(victim: Char, grabber: Char) {
   victim.grabbedBy = -1;
   victim.mash = 0;
   grabber.holding = false;
+  holds.delete(grabber);
   victim.knock = 0.3;
   grabber.knock = 0.4;
   const f = headVec(grabber.facing);
@@ -219,17 +232,19 @@ function breakFree(victim: Char, grabber: Char) {
   toast(victim.name + ' wriggled free!', '#aef7a2');
 }
 
-function throwVictim(grabber: Char, victim: Char) {
+function shoveVictim(grabber: Char, victim: Char) {
   victim.grabbedBy = -1;
   victim.mash = 0;
   grabber.holding = false;
-  const f = headVec(grabber.facing);
-  victim.vel.x = f.x * CONFIG.throwForce + grabber.vel.x * 0.5;
-  victim.vel.z = f.z * CONFIG.throwForce + grabber.vel.z * 0.5;
+  // a small push outward along the hold, not a cannon launch
+  const dx = victim.pos.x - grabber.pos.x, dz = victim.pos.z - grabber.pos.z;
+  const d = Math.hypot(dx, dz) || 1;
+  victim.vel.x = (dx / d) * CONFIG.throwForce + grabber.vel.x * 0.5;
+  victim.vel.z = (dz / d) * CONFIG.throwForce + grabber.vel.z * 0.5;
   victim.vy = CONFIG.throwArc;
-  victim.jumpY = Math.max(victim.jumpY, 0.45);
-  victim.knock = 0.55;
-  toast(grabber.name + ' YEETS ' + victim.name + '!', '#ff8a7a');
+  victim.jumpY = Math.max(victim.jumpY, 0.3);
+  victim.knock = 0.85;
+  toast(grabber.name + ' shoves ' + victim.name + '!', '#ff8a7a');
 }
 
 /* --- per-frame hands logic (host + solo) --- */
@@ -250,7 +265,7 @@ export function updateHands(dt: number) {
         if (!charActive(c) || c.mode !== 'deck' || c.grabbedBy >= 0) continue;
         if (Math.hypot(c.pos.x - m.x, c.pos.z - m.z) < 0.7 && Math.hypot(m.vx, m.vz) > 2) {
           releaseStation(c);
-          c.knock = Math.max(c.knock, 1.0);
+          c.knock = Math.max(c.knock, 1.3);
           c.vel.x += m.vx * 0.45;
           c.vel.z += m.vz * 0.45;
           audio.thwack();
@@ -293,21 +308,51 @@ export function updateHands(dt: number) {
       } else c.scrubT = Math.max(0, c.scrubT - dt * 3);
     } else if (c.scrubT > 0) c.scrubT = Math.max(0, c.scrubT - dt * 3);
 
-    // holding the other pirate
+    // holding the other pirate: reel them toward the mouse-dragged hold point
     if (c.holding) {
       const victim = chars[1 - i];
       if (!victim || victim.grabbedBy !== i || victim.mode !== 'deck' || c.mode !== 'deck') {
         c.holding = false;
+        holds.delete(c);
         if (victim && victim.grabbedBy === i) victim.grabbedBy = -1;
       } else if (!ax.h) {
-        throwVictim(c, victim);
+        shoveVictim(c, victim);                       // released the key: a little push
+        holds.delete(c);
       } else {
-        const f = headVec(c.facing);
-        victim.pos.x = c.pos.x + f.x * 0.9;
-        victim.pos.z = c.pos.z + f.z * 0.9;
-        victim.vel.x = 0; victim.vel.z = 0;
-        victim.jumpY = 0.22; victim.vy = 0;
-        victim.facing = wrapPi(c.facing + Math.PI);
+        const hp = holds.get(c) ?? { ang: 0, dist: 0.95, strain: 0 };
+        holds.set(c, hp);
+        // consume this player's accumulated mouse drag
+        const src = c === p1 ? localDrag : netDrag;
+        hp.ang = clamp(hp.ang - src.x * CONFIG.dragSens, -1.35, 1.35);
+        hp.dist = clamp(hp.dist - src.y * CONFIG.dragSens * 0.8, 0.55, 1.55);
+        src.x = 0; src.y = 0;
+        const ha = wrapPi(c.facing + hp.ang);
+        const tx = c.pos.x + Math.sin(ha) * hp.dist;
+        const tz = c.pos.z + Math.cos(ha) * hp.dist;
+        // someone clinging to a station resists until you haul them off it
+        const pull = victim.station ? CONFIG.stationGripPull : CONFIG.dragPull;
+        const k = Math.min(1, pull * dt);
+        const wasX = victim.pos.x, wasZ = victim.pos.z;
+        victim.pos.x += (tx - victim.pos.x) * k;
+        victim.pos.z += (tz - victim.pos.z) * k;
+        victim.vel.x = (victim.pos.x - wasX) / Math.max(dt, 1e-4) * 0.5;   // feeds the ragdoll
+        victim.vel.z = (victim.pos.z - wasZ) / Math.max(dt, 1e-4) * 0.5;
+        victim.jumpY = lerp(victim.jumpY, 0.12, Math.min(1, 8 * dt));
+        victim.vy = 0;
+        victim.facing = wrapPi(Math.atan2(c.pos.x - victim.pos.x, c.pos.z - victim.pos.z));
+        if (victim.station) {
+          const sp = victim.station === 'helm' ? layout.helm : layout.sailSta;
+          // tug-of-war: pulling the hold point away from their grip builds strain
+          const gap = Math.hypot(tx - victim.pos.x, tz - victim.pos.z);
+          hp.strain += gap * dt * 1.7;
+          const hauledOut = Math.hypot(victim.pos.x - sp.x, victim.pos.z - sp.z) > CONFIG.stationDragOff;
+          if (hp.strain > 1.0 || hauledOut) {
+            toast(victim.name + ' got dragged off the ' + victim.station + '!', '#ffd95e');
+            releaseStation(victim);
+            victim.knock = Math.max(victim.knock, 0.4);   // loses footing as the grip breaks
+          }
+        }
+        // victim struggle drags the pair around at half effect
         const va = charAxes(victim);
         if (va.fwd || va.strafe) {
           const n = Math.hypot(va.fwd, va.strafe);

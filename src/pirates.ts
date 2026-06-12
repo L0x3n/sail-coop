@@ -157,7 +157,7 @@ export function animateChar(c: Char, dt: number, t: number) {
     rag.armRZ.v += (Math.random() - 0.5) * 10;
     rag.legL.v += (Math.random() - 0.5) * 12;
     rag.legR.v += (Math.random() - 0.5) * 12;
-    if (airborne) rag.spinV = (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 5);
+    // (no cartwheels — flops only)
   }
   rag.wasKnocked = knocked;
 

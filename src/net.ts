@@ -1,12 +1,12 @@
 import Peer, { DataConnection } from 'peerjs';
 import { BOATS, DECK_Y } from './config';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, env, myChar, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { boat, chars, env, myChar, netDrag, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { setBoatPreset } from './shipMesh';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
 import type { BoatPreset } from './types';
-import { inputAxes } from './input';
+import { inputAxes, localDrag } from './input';
 import { applyAspect, scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { animateChar } from './pirates';
@@ -115,7 +115,8 @@ export function hostOnData(m: NetMsg) {
     p2.netAxes.j = m.a.j ? 1 : 0;
     p2.netAxes.h = m.a.h ? 1 : 0;
     p2.netAxes.u = m.a.u ? 1 : 0;
-    if (typeof m.f === 'number') p2.facing = wrapPi(m.f);
+    if (m.d) { netDrag.x += +m.d.x || 0; netDrag.y += +m.d.y || 0; }
+    if (typeof m.f === 'number' && !p2.holding) p2.facing = wrapPi(m.f);
     session.started = true;
   } else if (m.k === 'g') {
     if (!session.docked && p2.mode === 'deck') pressE(p2);
@@ -247,7 +248,9 @@ export function guestStep(dt: number) {
   inputTimer -= dt;
   if (inputTimer <= 0) {
     inputTimer = 1 / 15;
-    netSend({ k: 'i', a: inputAxes(), f: myChar().facing });
+    const d = { x: localDrag.x, y: localDrag.y };
+    localDrag.x = 0; localDrag.y = 0;
+    netSend({ k: 'i', a: inputAxes(), f: myChar().facing, d });
   }
 }
 

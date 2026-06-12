@@ -3,7 +3,7 @@ import { CONFIG, DECK_Y } from './config';
 import { boat, charActive, chars, layout, netRole, splats } from './state';
 import { gulls, scene } from './scene';
 import { heelGroup } from './shipMesh';
-import { spawnDroplets } from './effects';
+import { spawnDroplets, spawnWake } from './effects';
 import { toast } from './hud';
 import * as audio from './audio';
 
@@ -251,6 +251,185 @@ function updateBomber(dt: number, t: number) {
   }
 }
 
+/* =========================== ocean life ===========================
+   A whale that surfaces for a breath, a shark fin cruising past, floating
+   debris, and bottles with messages. All cosmetic, all sporadic. */
+
+/* --- the whale --- */
+const whale = new THREE.Group();
+{
+  const mat = new THREE.MeshLambertMaterial({ color: 0x3d5462 });
+  const belly = new THREE.MeshLambertMaterial({ color: 0x9fb4bd });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 10), mat);
+  body.scale.set(1.15, 0.95, 2.6);
+  whale.add(body);
+  const chin = new THREE.Mesh(new THREE.SphereGeometry(1.25, 10, 8), belly);
+  chin.position.set(0, -0.55, 1.1);
+  chin.scale.set(0.95, 0.6, 1.6);
+  whale.add(chin);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.6, 4), mat);
+  tail.position.set(0, 0.3, -4.4);
+  tail.rotation.x = -Math.PI / 2.3;
+  tail.scale.set(1.6, 1, 0.25);
+  whale.add(tail);
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.0, 4), mat);
+  fin.position.set(0, 1.3, -1.2);
+  fin.scale.z = 0.35;
+  whale.add(fin);
+  whale.traverse(o => { o.userData.noShadow = true; });
+  whale.visible = false;
+  whale.name = 'whale';
+  scene.add(whale);
+}
+const whaleState = { active: false, t: 0, cd: 25 + Math.random() * 30, from: new THREE.Vector3(), dir: new THREE.Vector3(), sprayed: false };
+
+function updateWhale(dt: number) {
+  const W = whaleState;
+  if (!W.active) {
+    W.cd -= dt;
+    if (W.cd <= 0) {
+      W.active = true; W.t = 0; W.sprayed = false;
+      const a = Math.random() * Math.PI * 2;
+      const r = 35 + Math.random() * 40;
+      W.from.set(boat.pos.x + Math.cos(a) * r, 0, boat.pos.z + Math.sin(a) * r);
+      const da = Math.random() * Math.PI * 2;
+      W.dir.set(Math.sin(da), 0, Math.cos(da));
+      whale.visible = true;
+    }
+    return;
+  }
+  W.t += dt / 11;                      // an 11-second breach
+  if (W.t >= 1) {
+    W.active = false;
+    whale.visible = false;
+    W.cd = 35 + Math.random() * 55;
+    return;
+  }
+  const y = -3.4 + Math.sin(W.t * Math.PI) * 3.8;
+  whale.position.set(W.from.x + W.dir.x * W.t * 26, y, W.from.z + W.dir.z * W.t * 26);
+  whale.rotation.y = Math.atan2(W.dir.x, W.dir.z);
+  whale.rotation.x = -Math.cos(W.t * Math.PI) * 0.3;
+  if (!W.sprayed && W.t > 0.42) {     // blowhole at the top of the arc
+    W.sprayed = true;
+    spawnDroplets(whale.position.x + W.dir.x * 2, whale.position.z + W.dir.z * 2, 8, 1.2, 5.5);
+    audio.splash(false);
+  }
+  if (W.t > 0.2 && W.t < 0.85 && Math.random() < dt * 4) {
+    spawnWake(whale.position.x, whale.position.z, whale.rotation.y, 2.2);
+  }
+}
+
+/* --- the shark --- */
+const shark = new THREE.Group();
+{
+  const mat = new THREE.MeshLambertMaterial({ color: 0x4d5a63 });
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.8, 4), mat);
+  fin.scale.z = 0.3;
+  fin.position.y = 0.32;
+  shark.add(fin);
+  const back = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), mat);
+  back.scale.set(0.5, 0.22, 1.6);
+  back.position.y = -0.02;
+  shark.add(back);
+  shark.traverse(o => { o.userData.noShadow = true; });
+  shark.visible = false;
+  shark.name = 'shark';
+  scene.add(shark);
+}
+const sharkState = { active: false, t: 0, cd: 18 + Math.random() * 20, from: new THREE.Vector3(), dir: new THREE.Vector3(), rip: 0 };
+
+function updateShark(dt: number) {
+  const S = sharkState;
+  if (!S.active) {
+    S.cd -= dt;
+    if (S.cd <= 0) {
+      S.active = true; S.t = 0;
+      const a = Math.random() * Math.PI * 2;
+      const r = 14 + Math.random() * 16;
+      S.from.set(boat.pos.x + Math.cos(a) * r, 0, boat.pos.z + Math.sin(a) * r);
+      const da = a + Math.PI / 2 + (Math.random() - 0.5) * 0.8;   // roughly circling past
+      S.dir.set(Math.sin(da), 0, Math.cos(da));
+      shark.visible = true;
+    }
+    return;
+  }
+  S.t += dt / 14;
+  if (S.t >= 1) {
+    S.active = false;
+    shark.visible = false;
+    S.cd = 25 + Math.random() * 35;
+    return;
+  }
+  shark.position.set(
+    S.from.x + S.dir.x * S.t * 60,
+    0.02 + Math.sin(S.t * 28) * 0.05,
+    S.from.z + S.dir.z * S.t * 60);
+  shark.rotation.y = Math.atan2(S.dir.x, S.dir.z) + Math.sin(S.t * 20) * 0.1;
+  S.rip -= dt;
+  if (S.rip <= 0) {
+    S.rip = 0.5;
+    spawnWake(shark.position.x, shark.position.z, shark.rotation.y, 0.4);
+  }
+}
+
+/* --- floating debris + message bottles --- */
+const flotsam: { mesh: THREE.Mesh; ph: number }[] = [];
+{
+  const wood = new THREE.MeshLambertMaterial({ color: 0x7a5232 });
+  const spots = [[28, -42], [-38, -88], [52, -140], [-18, -228], [70, -25], [-65, -190]] as const;
+  spots.forEach(([x, z], i) => {
+    const mesh = i % 2
+      ? new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.75, 9), wood)     // barrel
+      : new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.16, 0.5), wood);              // plank
+    mesh.position.set(x, 0.1, z);
+    mesh.rotation.set(i % 2 ? Math.PI / 2.2 : 0, i * 1.3, 0);
+    mesh.userData.noShadow = true;
+    scene.add(mesh);
+    flotsam.push({ mesh, ph: i * 1.7 });
+  });
+}
+const NOTES = [
+  '"Red skies at night..." — the rest is too soggy to read',
+  'A treasure map! ...of a completely different ocean.',
+  '"SEND MORE LIMES" — signed, the previous crew',
+];
+const bottles: { mesh: THREE.Group; cd: number; note: string }[] = [];
+{
+  const glass = new THREE.MeshLambertMaterial({ color: 0x7dc4a7 });
+  const cork = new THREE.MeshLambertMaterial({ color: 0xc8a06a });
+  [[12, -64], [-26, -132], [9, -188]].forEach(([x, z], i) => {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), glass);
+    g.add(b);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), cork);
+    neck.position.y = 0.32;
+    g.add(neck);
+    g.position.set(x, 0.08, z);
+    g.rotation.z = Math.PI / 2.4;
+    g.traverse(o => { o.userData.noShadow = true; });
+    scene.add(g);
+    bottles.push({ mesh: g, cd: 0, note: NOTES[i % NOTES.length] });
+  });
+}
+
+function updateFlotsam(dt: number, t: number) {
+  for (const f of flotsam) {
+    f.mesh.position.y = 0.08 + Math.sin(t * 1.1 + f.ph) * 0.07;
+    f.mesh.rotation.y += dt * 0.06;
+  }
+  for (const bo of bottles) {
+    bo.cd -= dt;
+    bo.mesh.position.y = 0.06 + Math.sin(t * 1.4 + bo.mesh.position.x) * 0.06;
+    bo.mesh.rotation.y += dt * 0.2;
+    if (netRole !== 'guest' && bo.cd <= 0 &&
+        Math.hypot(bo.mesh.position.x - boat.pos.x, bo.mesh.position.z - boat.pos.z) < 6) {
+      bo.cd = 150;
+      audio.fishPlop();
+      toast('Message in a bottle: ' + bo.note, '#7dc4a7');
+    }
+  }
+}
+
 /* ambient gull cries from the circling birds */
 let cryTimer = 5;
 function updateCries(dt: number) {
@@ -268,4 +447,7 @@ export function updateCritters(dt: number, t: number) {
   updateFish(dt);
   updateBomber(dt, t);
   updateCries(dt);
+  updateWhale(dt);
+  updateShark(dt);
+  updateFlotsam(dt, t);
 }

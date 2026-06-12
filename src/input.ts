@@ -38,10 +38,17 @@ document.addEventListener('mouseup', e => {
   dragLook = false;
   if (e.button === 0) keys['Mouse0'] = false;
 });
+/* while you hold someone, the mouse DRAGS them instead of looking around */
+export const localDrag = { x: 0, y: 0 };
 document.addEventListener('mousemove', e => {
   if (session.inMenu) return;
   if (!document.pointerLockElement && !dragLook) return;
   const c = myChar();
+  if (c.holding) {
+    localDrag.x += e.movementX;
+    localDrag.y += e.movementY;
+    return;
+  }
   // yaw increases counter-clockwise in this convention -> mouse right = decrease
   c.facing = wrapPi(c.facing - e.movementX * CONFIG.mouseSens);
   c.pitch = clamp(c.pitch - e.movementY * CONFIG.mouseSens, -1.15, 1.15);

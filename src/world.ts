@@ -17,6 +17,14 @@ export interface Obstacle { x: number; z: number; r: number; }
 export const obstacles: Obstacle[] = [];
 export let dockArrow: THREE.Mesh;
 
+/* smaller islands scattered off the main corridor — scenery to explore */
+export const EXTRA_ISLES = [
+  { x: 150, z: -70, r: 13, palms: 2, hill: true },
+  { x: -160, z: -150, r: 10, palms: 0, hill: false },   // bare skerry
+  { x: 95, z: -268, r: 15, palms: 3, hill: true },
+  { x: -120, z: 40, r: 8, palms: 1, hill: false },      // tiny one behind spawn
+];
+
 export function buildWorld() {
   const sandMat = new THREE.MeshLambertMaterial({ color: 0xe7d08a });
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.islandRadius, CONFIG.islandRadius + 6, 3, 28), sandMat);
@@ -31,7 +39,7 @@ export function buildWorld() {
   // curvy palms
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x9a6b3f });
   const leafMat = new THREE.MeshLambertMaterial({ color: 0x3f8f46 });
-  for (const [px, pz, lean] of [[-14, 16, 0.3], [10, 20, -0.25], [20, -12, 0.2], [-22, -4, -0.35]] as const) {
+  const buildPalm = (wx: number, wz: number, lean: number) => {
     const palm = new THREE.Group();
     let y = 1.5;
     for (let s = 0; s < 5; s++) {
@@ -49,8 +57,39 @@ export function buildWorld() {
       leaf.rotation.y = i * TAU / 6;
       palm.add(leaf);
     }
-    palm.position.set(islandPos.x + px, 0, islandPos.z + pz);
+    palm.position.set(wx, 0, wz);
     scene.add(palm);
+  };
+  for (const [px, pz, lean] of [[-14, 16, 0.3], [10, 20, -0.25], [20, -12, 0.2], [-22, -4, -0.35]] as const) {
+    buildPalm(islandPos.x + px, islandPos.z + pz, lean);
+  }
+
+  // the smaller isles
+  const rockMat = new THREE.MeshLambertMaterial({ color: 0x868e96, flatShading: true });
+  for (const isle of EXTRA_ISLES) {
+    const sandIsle = new THREE.Mesh(new THREE.CylinderGeometry(isle.r, isle.r + 4, 2.4, 20), sandMat);
+    sandIsle.position.set(isle.x, 0.3, isle.z);
+    scene.add(sandIsle);
+    if (isle.hill) {
+      const h = new THREE.Mesh(new THREE.ConeGeometry(isle.r * 0.55, isle.r * 0.4, 14),
+        new THREE.MeshLambertMaterial({ color: 0x6cb56f }));
+      h.position.set(isle.x - 2, isle.r * 0.2 + 1.2, isle.z - 2);
+      scene.add(h);
+    }
+    if (isle.palms === 0) {
+      // bare skerry: a couple of boulders
+      for (let i = 0; i < 3; i++) {
+        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6 + i * 0.6, 0), rockMat);
+        rock.position.set(isle.x + (i - 1) * 3, 1.6, isle.z + (i % 2) * 2.5 - 1);
+        rock.rotation.set(i, i * 2, 0);
+        scene.add(rock);
+      }
+    } else {
+      for (let p = 0; p < isle.palms; p++) {
+        buildPalm(isle.x + (p - isle.palms / 2) * 4 + 1, isle.z + (p % 2) * 4 - 2, (p % 2 ? -0.25 : 0.3));
+      }
+    }
+    obstacles.push({ x: isle.x, z: isle.z, r: isle.r + 2.5 });
   }
 
   // pier with plank deck

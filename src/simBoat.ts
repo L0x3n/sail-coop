@@ -106,7 +106,7 @@ function collideBoat() {
         for (const c of chars) {
           if (c.mode !== 'deck' || !charActive(c)) continue;
           releaseStation(c);
-          c.knock = Math.max(c.knock, 1.2);
+          c.knock = Math.max(c.knock, 1.5);
           c.vel.x += lx * CONFIG.bounceKick * (0.7 + Math.random() * 0.6);
           c.vel.z += lz * CONFIG.bounceKick * (0.7 + Math.random() * 0.6);
         }

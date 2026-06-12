@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { TAU } from './mathUtil';
 import { boat, chars, charActive, env, wind } from './state';
-import { islandPos, pierA, pierB } from './world';
+import { EXTRA_ISLES, islandPos, pierA, pierB } from './world';
 import { WEATHERS } from './weather';
 
 /* =========================== big map (M) =========================== */
@@ -41,6 +41,16 @@ export function drawMap() {
   ctx.beginPath(); ctx.arc(mx(islandPos.x), my(islandPos.z), ir + 7, 0, TAU); ctx.fill();
   ctx.fillStyle = '#57a05a';
   ctx.beginPath(); ctx.arc(mx(islandPos.x) - 6, my(islandPos.z) - 5, ir * 0.55, 0, TAU); ctx.fill();
+  // the smaller isles
+  for (const isle of EXTRA_ISLES) {
+    const rr = (isle.r / (X1 - X0)) * W;
+    ctx.fillStyle = '#e7d08a';
+    ctx.beginPath(); ctx.arc(mx(isle.x), my(isle.z), rr + 3, 0, TAU); ctx.fill();
+    if (isle.palms > 0) {
+      ctx.fillStyle = '#57a05a';
+      ctx.beginPath(); ctx.arc(mx(isle.x), my(isle.z), rr * 0.5, 0, TAU); ctx.fill();
+    }
+  }
   // pier + dock zones
   ctx.fillStyle = '#8a5a33';
   ctx.fillRect(mx(pierA.x) - 3, my(pierB.z), 6, my(pierA.z) - my(pierB.z));

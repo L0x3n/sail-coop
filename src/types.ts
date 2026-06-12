@@ -84,7 +84,7 @@ export interface Snapshot {
 export type NetMsg =
   | Snapshot
   | { k: 'start'; boat: string }
-  | { k: 'i'; a: Axes; f: number }
+  | { k: 'i'; a: Axes; f: number; d?: { x: number; y: number } }
   | { k: 'g' }
   | { k: 'toast'; x: string; col?: string }
   | { k: 'fx'; fx: 'poop'; id: number; x: number; z: number }
