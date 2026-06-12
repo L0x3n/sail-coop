@@ -8,7 +8,26 @@ export interface PirateParts {
   pupils: THREE.Mesh[];
   brows: THREE.Mesh[];
   arms: THREE.Mesh[];
+  legs: THREE.Mesh[];
   mouth: THREE.Mesh;
+  rig: THREE.Group;      // everything; flops/spins as one
+  torso: THREE.Group;    // pivots at the hips
+  headBone: THREE.Group; // pivots at the neck (face + hat ride along)
+}
+
+/* pseudo-ragdoll: every pose channel is a damped spring */
+export interface RagChannel { a: number; v: number; }
+export interface RagState {
+  torsoX: RagChannel; torsoZ: RagChannel;
+  headX: RagChannel; headZ: RagChannel;
+  armLX: RagChannel; armLZ: RagChannel;
+  armRX: RagChannel; armRZ: RagChannel;
+  legL: RagChannel; legR: RagChannel;
+  rigY: RagChannel;
+  spin: number; spinV: number;     // airborne cartwheels
+  wasKnocked: boolean;
+  flopDir: number;                 // face-plant (+1) or back-flop (-1)
+  flopRoll: number;                // fixed sideways sprawl per knockdown
 }
 
 export interface EyeState {
@@ -37,6 +56,7 @@ export interface Char {
   overboardCount: number;
   animMoving: boolean;
   eye?: EyeState;
+  rag?: RagState;
   rippleT: number;
   /* hands: mop + grab/throw */
   hasMop: boolean;

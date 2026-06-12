@@ -234,11 +234,11 @@ export function guestStep(dt: number) {
     if (c.mode === 'deck') {
       let y = DECK_Y + c.jumpY;
       if (mv && c.jumpY < 0.01 && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
-      c.mesh.position.set(c.pos.x, c.knock > 0 ? DECK_Y - 0.25 : y, c.pos.z);
-      c.mesh.rotation.set(c.knock > 0 ? 1.35 : 0, c.facing, 0);
+      c.mesh.position.set(c.pos.x, y, c.pos.z);
+      c.mesh.rotation.set(0, c.facing, 0);   // posture comes from the ragdoll rig
     } else {
-      c.mesh.position.set(c.pos.x, 0.05 + Math.sin(session.simT * 3 + i) * 0.08, c.pos.z);
-      c.mesh.rotation.set(1.25, c.facing, Math.sin(session.simT * 9 + i * 3) * (mv ? 0.25 : 0.45));
+      c.mesh.position.set(c.pos.x, 0.18 + Math.sin(session.simT * 3 + i) * 0.08, c.pos.z);
+      c.mesh.rotation.set(0, c.facing, 0);
       c.rippleT -= dt;
       if (mv && c.rippleT <= 0) { c.rippleT = 0.22; spawnWake(c.pos.x, c.pos.z, c.facing, 0.5); }
     }

@@ -96,11 +96,12 @@ export function washAboard(c: Char) {
 export function updateChar(c: Char, ci: number, dt: number, t: number) {
   if (c.knock > 0) c.knock -= dt;
 
-  // held by the other pirate: position is pinned by updateHands, nothing else applies
+  // held by the other pirate: position is pinned by updateHands; the limp
+  // dangle itself is the ragdoll's job (animateChar)
   if (c.grabbedBy >= 0) {
     c.animMoving = false;
     c.mesh.position.set(c.pos.x, DECK_Y + c.jumpY, c.pos.z);
-    c.mesh.rotation.set(0, c.facing, Math.sin(t * 13) * 0.18);   // squirming
+    c.mesh.rotation.set(0, c.facing, 0);
     return;
   }
 
@@ -216,13 +217,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     let y = DECK_Y + c.jumpY;
     if (moving && grounded && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
     c.mesh.position.set(c.pos.x, y, c.pos.z);
-    if (c.knock > 0) {
-      c.mesh.rotation.x = lerp(c.mesh.rotation.x, 1.35, Math.min(1, 10 * dt));
-      c.mesh.position.y = DECK_Y - 0.25;
-    } else {
-      c.mesh.rotation.x = lerp(c.mesh.rotation.x, 0, Math.min(1, 10 * dt));
-      c.mesh.rotation.y = c.facing;
-    }
+    c.mesh.rotation.set(0, c.facing, 0);   // flops, leans and tumbles live in the ragdoll rig
 
   } else {
     // ---- in the water: free swimming (world space) ----
@@ -264,11 +259,9 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       spawnWake(c.pos.x, c.pos.z, c.facing, 0.5);
       if (Math.random() < 0.5) spawnDroplets(c.pos.x, c.pos.z, 1, 1.3, 1.5);
     }
-    // paddling pose
-    c.mesh.position.set(c.pos.x, 0.05 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
-    c.mesh.rotation.x = 1.25;
-    c.mesh.rotation.y = c.facing;
-    c.mesh.rotation.z = Math.sin(t * 9 + ci * 3) * (swimming ? 0.25 : 0.45);
+    // bobbing at the surface; the prone paddling pose is the ragdoll's
+    c.mesh.position.set(c.pos.x, 0.18 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
+    c.mesh.rotation.set(0, c.facing, 0);
     // climb back up ONLY when deliberately swimming INTO the hull
     const lp = worldToLocal2(c.pos);
     if (c.knock <= 0 && swimming &&
