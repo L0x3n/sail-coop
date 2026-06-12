@@ -10,18 +10,19 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.18;
 renderer.domElement.className = 'webgl';
 document.body.appendChild(renderer.domElement);
 
 export const scene = new THREE.Scene();
-export const SKY = 0xcfeaf8;          // horizon tint: fog + water blend into this
+export const SKY = 0xf2e3c2;          // warm cream horizon: fog + water haze blend into this
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 260, 850);
 
-export const hemi = new THREE.HemisphereLight(0xcfeaff, 0x2a5a7a, 0.95);
+// stylized bounce: cool sky from above, warm sand glow from below
+export const hemi = new THREE.HemisphereLight(0xbfe0ff, 0xe0b888, 1.0);
 scene.add(hemi);
-export const sun = new THREE.DirectionalLight(0xfff2d8, 1.45);
+export const sun = new THREE.DirectionalLight(0xffe7b0, 1.5);
 sun.position.set(80, 120, 40);
 scene.add(sun);
 // real-time shadows: the shadow box follows the boat (set each frame)
@@ -33,25 +34,27 @@ sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
 sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03;
 scene.add(sun.target);
 
-/* --- sky dome: soft gradient + sun glow, follows the camera --- */
+/* --- sky dome: warm horizon -> azure -> deep blue zenith, sun glow, follows the camera --- */
 export const skyDome = new THREE.Mesh(
   new THREE.SphereGeometry(900, 24, 16),
   new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: {
-      uZenith: { value: new THREE.Color(0x4d9ed8) },
+      uZenith: { value: new THREE.Color(0x2f86d6) },
+      uMid: { value: new THREE.Color(0x8ecaee) },
       uHorizon: { value: new THREE.Color(SKY) },
       uSun: { value: sun.position.clone().normalize() },
     },
     vertexShader: `varying vec3 vDir;
       void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `uniform vec3 uZenith,uHorizon,uSun; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uZenith,uMid,uHorizon,uSun; varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
         float h = clamp(d.y, 0.0, 1.0);
-        vec3 col = mix(uHorizon, uZenith, pow(h, 0.5));
+        vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.16, h));
+        col = mix(col, uZenith, smoothstep(0.16, 0.62, h));
         float s = max(dot(d, normalize(uSun)), 0.0);
-        col += vec3(1.0, 0.92, 0.72) * (pow(s, 900.0) * 1.2 + pow(s, 16.0) * 0.10);
+        col += vec3(1.0, 0.9, 0.66) * (pow(s, 900.0) * 1.2 + pow(s, 14.0) * 0.16);
         gl_FragColor = vec4(col, 1.0);
       }`,
   }));
@@ -59,17 +62,20 @@ skyDome.userData.noShadow = true;
 skyDome.frustumCulled = false;
 scene.add(skyDome);
 
-/* --- a few lazy clouds drifting with the wind --- */
+/* --- puffy faceted clouds drifting with the wind --- */
 export const clouds: THREE.Group[] = [];
 {
-  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8fa9bb, emissiveIntensity: 0.45 });
+  const cloudMat = new THREE.MeshLambertMaterial({
+    color: 0xffffff, emissive: 0xa9c4d8, emissiveIntensity: 0.5, flatShading: true,
+  });
   for (let i = 0; i < 9; i++) {
     const cl = new THREE.Group();
-    const n = 3 + (i % 3);
+    const n = 4 + (i % 3);
     for (let k = 0; k <= n; k++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(6 + Math.random() * 8, 10, 8), cloudMat);
-      puff.position.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 14);
-      puff.scale.y = 0.45;
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(6 + Math.random() * 9, 1), cloudMat);
+      puff.position.set((Math.random() - 0.5) * 34, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 16);
+      puff.scale.set(1, 0.42 + Math.random() * 0.12, 0.85);
+      puff.rotation.y = Math.random() * Math.PI;
       puff.userData.noShadow = true;
       cl.add(puff);
     }

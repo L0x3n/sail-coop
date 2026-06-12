@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { scene, sun, SKY } from './scene';
+import { makeSeaFoamTexture } from './textures';
 
 /* =========================== water ===========================
    Two interchangeable surfaces (Q toggles). Purely cosmetic — hull
@@ -32,16 +33,20 @@ function updateFlatWater(t: number, cx: number, cz: number) {
   flatGeo.computeVertexNormals();
 }
 
-/* --- fancy water: Gerstner-wave shader with ripples, SSS, glitter, foam --- */
+/* --- fancy water: Sea-of-Thieves-style Gerstner stack ---
+   Long smooth rollers + chop, jade subsurface glow through backlit
+   crests, lacy texture-driven foam, sun glitter, fresnel sky mirror. */
 export const fancyUniforms = {
   uTime: { value: 0 },
   uSwell: { value: 1.0 },
   uOffset: { value: new THREE.Vector2(0, 0) },
   uSunDir: { value: sun.position.clone().normalize() },
   uCamPos: { value: new THREE.Vector3() },
-  uDeep: { value: new THREE.Color(0x0e4e8e) },
-  uShallow: { value: new THREE.Color(0x2f9ad0) },
+  uDeep: { value: new THREE.Color(0x0a3f5c) },     // navy-teal troughs
+  uShallow: { value: new THREE.Color(0x1d8f8a) },  // vivid teal bodies
+  uSss: { value: new THREE.Color(0x46e3b5) },      // jade glow through crests
   uSky: { value: new THREE.Color(SKY) },
+  uFoam: { value: makeSeaFoamTexture() },
   uFogNear: { value: 260 }, uFogFar: { value: 850 },
 };
 const fancyMat = new THREE.ShaderMaterial({
@@ -65,10 +70,13 @@ const fancyMat = new THREE.ShaderMaterial({
       vec3 tang = vec3(1.0,0.0,0.0), binc = vec3(0.0,0.0,1.0);
       vec3 base = p;
       vec3 off = vec3(0.0);
-      off += gerstner(vec2( 1.0, 0.3), 0.16 * uSwell, 26.0 + 14.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2(-0.6, 1.0), 0.14 * uSwell, 15.0 + 8.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2( 0.9,-0.8), 0.10 * uSwell,  8.0, base, tang, binc);
-      off += gerstner(vec2( 0.2, 1.0), 0.08 * uSwell,  4.5, base, tang, binc);
+      // two long rollers carry the sea, the rest is texture on top of them
+      off += gerstner(vec2( 1.0, 0.35), 0.115 * uSwell, 52.0 + 22.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2(-0.45, 1.0), 0.125 * uSwell, 31.0 + 12.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2( 0.85,-0.55), 0.115 * uSwell, 17.0, base, tang, binc);
+      off += gerstner(vec2( 0.15, 1.0),  0.095 * uSwell,  9.5, base, tang, binc);
+      off += gerstner(vec2(-0.9, -0.2),  0.065 * uSwell,  5.2, base, tang, binc);
+      off += gerstner(vec2( 0.55, 0.8),  0.045 * uSwell,  3.1, base, tang, binc);
       p += off;
       p.xz -= uOffset;
       vCrest = off.y;
@@ -78,40 +86,62 @@ const fancyMat = new THREE.ShaderMaterial({
       gl_Position = projectionMatrix * viewMatrix * wp;
     }`,
   fragmentShader: `
-    uniform vec3 uSunDir, uCamPos, uDeep, uShallow, uSky;
+    uniform vec3 uSunDir, uCamPos, uDeep, uShallow, uSss, uSky;
     uniform float uFogNear, uFogFar, uTime;
+    uniform sampler2D uFoam;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     void main() {
       vec3 n = normalize(vNrm);
+      // three scrolling ripple octaves keep the surface alive between swells
       float r1 = sin(vPos.x * 1.45 + uTime * 1.2) * sin(vPos.z * 1.15 - uTime * 0.9);
       float r2 = sin(vPos.x * 3.60 - uTime * 1.8) * sin(vPos.z * 3.20 + uTime * 1.4);
-      n = normalize(n + vec3(r1 * 0.07 + r2 * 0.05, 0.0, r1 * 0.05 - r2 * 0.06));
+      float r3 = sin(vPos.x * 7.10 + uTime * 2.6) * sin(vPos.z * 6.40 - uTime * 2.2);
+      n = normalize(n + vec3(r1 * 0.06 + r2 * 0.045 + r3 * 0.02, 0.0, r1 * 0.045 - r2 * 0.05 + r3 * 0.02));
       vec3 viewDir = normalize(uCamPos - vPos);
       float fres = pow(1.0 - max(dot(n, viewDir), 0.0), 3.0);
-      float heightMix = clamp(vCrest * 1.3 + 0.5, 0.0, 1.0);
+
+      // body color: trough navy -> teal, pushed greener as waves stand up
+      float heightMix = clamp(vCrest * 1.05 + 0.45, 0.0, 1.0);
       vec3 col = mix(uDeep, uShallow, heightMix);
-      float sss = smoothstep(0.15, 0.85, vCrest) * max(dot(n, uSunDir), 0.0);
-      col += vec3(0.05, 0.38, 0.42) * sss * 0.55;
-      col = mix(col, uSky, fres * 0.6);
+
+      // the Sea-of-Thieves signature: light pours THROUGH a backlit crest
+      vec3 sunH = normalize(vec3(uSunDir.x, 0.0, uSunDir.z));
+      float towardSun = max(dot(viewDir, -sunH), 0.0);
+      float crestUp = smoothstep(0.12, 0.9, vCrest);
+      float sss = crestUp * (0.35 + 0.65 * pow(towardSun, 2.0)) * max(dot(n, uSunDir), 0.0);
+      col = mix(col, uSss, clamp(sss * 0.85, 0.0, 0.8));
+
+      // sky mirror at a glance
+      col = mix(col, uSky, fres * 0.55);
+
+      // sun glitter: tight sparkle + soft sheen
       vec3 h = normalize(uSunDir + viewDir);
       float ndh = max(dot(n, h), 0.0);
-      col += vec3(1.0, 0.95, 0.8) * (pow(ndh, 260.0) * 1.4 + pow(ndh, 24.0) * 0.10);
-      float foamN = sin(vPos.x * 2.2 + uTime * 1.8) * sin(vPos.z * 2.4 - uTime * 1.4);
-      float foam = smoothstep(0.40, 0.72, vCrest + foamN * 0.14);
-      col = mix(col, vec3(0.93, 0.98, 1.0), foam * 0.8);
+      col += vec3(1.0, 0.96, 0.82) * (pow(ndh, 420.0) * 2.2 + pow(ndh, 36.0) * 0.12);
+
+      // lacy foam: two scrolling samples of the cell texture, gated by crest height
+      float lace1 = texture2D(uFoam, vPos.xz * 0.055 + vec2(uTime * 0.014, -uTime * 0.011)).r;
+      float lace2 = texture2D(uFoam, vPos.xz * 0.023 - vec2(uTime * 0.009, uTime * 0.013)).r;
+      float lace = lace1 * 0.65 + lace2 * 0.55;
+      float crestF = smoothstep(0.30, 0.85, vCrest + r2 * 0.06);
+      float foam = smoothstep(0.50, 0.78, crestF * (0.45 + lace));        // full white caps
+      float streaks = smoothstep(0.32, 0.5, crestF * (0.45 + lace)) * 0.4; // thin lace below them
+      float foamAll = clamp(foam + streaks, 0.0, 1.0);
+      col = mix(col, vec3(0.94, 0.99, 1.0), foamAll * 0.85);
+
       float d = distance(uCamPos, vPos);
       float fogF = smoothstep(uFogNear, uFogFar, d);
       col = mix(col, uSky, fogF);
       // see-through straight down (shallows show the seabed), mirror-opaque at a glance
       float alpha = mix(0.72, 0.97, fres);
-      alpha = mix(alpha, 1.0, foam * 0.8);
+      alpha = mix(alpha, 1.0, foamAll * 0.8);
       alpha = mix(alpha, 1.0, fogF);
       gl_FragColor = vec4(col, alpha);
     }`,
   transparent: true,
   side: THREE.DoubleSide,
 });
-const fancyGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 180, 180);
+const fancyGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 224, 224);
 fancyGeo.rotateX(-Math.PI / 2);
 export const fancyWaterMesh = new THREE.Mesh(fancyGeo, fancyMat);
 fancyWaterMesh.frustumCulled = false;

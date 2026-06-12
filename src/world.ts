@@ -158,19 +158,54 @@ export function buildWorld() {
     }
   }
 
-  const sandMat = new THREE.MeshLambertMaterial({ color: 0xe7d08a });
+  /* faceted, vertex-colored mounds — chunky stylized rock with grass tops */
+  const moundMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const cGrassA = new THREE.Color(0x4fae5f), cGrassB = new THREE.Color(0x6cc26f);
+  const cRock = new THREE.Color(0x8d9296), cRockWarm = new THREE.Color(0xa89878);
+  const cSandFoot = new THREE.Color(0xeed9a2);
+  const buildMound = (wx: number, wz: number, r: number, h: number, seed: number) => {
+    const geo = new THREE.ConeGeometry(r, h, 12, 5).toNonIndexed();
+    const p = geo.attributes.position.array as Float32Array;
+    // radial displacement hashed from the ORIGINAL position so shared edges stay sealed
+    for (let i = 0; i < p.length; i += 3) {
+      const a = Math.atan2(p[i], p[i + 2]);
+      const yn = (p[i + 1] + h / 2) / h;
+      const n = Math.sin(a * 3 + seed) * 0.5 + Math.sin(a * 7 + yn * 4 + seed * 2) * 0.3 + Math.sin(a * 13 - yn * 2) * 0.2;
+      const f = 1 + n * 0.2;
+      p[i] *= f; p[i + 2] *= f;
+      p[i + 1] += Math.sin(a * 5 + seed) * h * 0.03;
+    }
+    geo.computeVertexNormals();
+    const nrm = geo.attributes.normal.array as Float32Array;
+    const col = new Float32Array(p.length);
+    const c = new THREE.Color();
+    for (let f3 = 0; f3 < p.length; f3 += 9) {        // one flat color per triangle
+      const yn = ((p[f3 + 1] + p[f3 + 4] + p[f3 + 7]) / 3 + h / 2) / h;
+      const upness = (nrm[f3 + 1] + nrm[f3 + 4] + nrm[f3 + 7]) / 3;
+      const hash = Math.abs(Math.sin(f3 * 0.73 + seed));
+      if (yn < 0.1) c.copy(cSandFoot);
+      else if (upness > 0.6 && yn > 0.2) c.lerpColors(cGrassA, cGrassB, hash);
+      else if (upness < 0.42) c.copy(cRock).offsetHSL(0, 0, hash * 0.05 - 0.025);
+      else c.lerpColors(cRockWarm, cGrassA, hash * 0.4);
+      for (let k = 0; k < 9; k += 3) { col[f3 + k] = c.r; col[f3 + k + 1] = c.g; col[f3 + k + 2] = c.b; }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const m = new THREE.Mesh(geo, moundMat);
+    m.position.set(wx, h / 2 + 0.6, wz);
+    scene.add(m);
+  };
+
+  const sandMat = new THREE.MeshLambertMaterial({ color: 0xf0dca4 });
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.islandRadius, CONFIG.islandRadius + 6, 3, 28), sandMat);
   sand.position.set(islandPos.x, 0.4, islandPos.z); scene.add(sand);
-  const hill = new THREE.Mesh(new THREE.ConeGeometry(24, 12, 20),
-    new THREE.MeshLambertMaterial({ color: 0x57a05a }));
-  hill.position.set(islandPos.x - 6, 6, islandPos.z - 8); scene.add(hill);
-  const hill2 = new THREE.Mesh(new THREE.ConeGeometry(14, 8, 16),
-    new THREE.MeshLambertMaterial({ color: 0x6cb56f }));
-  hill2.position.set(islandPos.x + 14, 4, islandPos.z + 2); scene.add(hill2);
+  buildMound(islandPos.x - 6, islandPos.z - 8, 24, 14, 1.7);
+  buildMound(islandPos.x + 14, islandPos.z + 2, 14, 8.5, 4.2);
 
-  // curvy palms
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x9a6b3f });
-  const leafMat = new THREE.MeshLambertMaterial({ color: 0x3f8f46 });
+  // curvy palms with droopy two-tone fronds and coconuts
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0xa8743f });
+  const leafMatA = new THREE.MeshLambertMaterial({ color: 0x3f9f4c, flatShading: true });
+  const leafMatB = new THREE.MeshLambertMaterial({ color: 0x5cbb62, flatShading: true });
+  const cocoMat = new THREE.MeshLambertMaterial({ color: 0x6b4a26 });
   const buildPalm = (wx: number, wz: number, lean: number) => {
     const palm = new THREE.Group();
     let y = 1.5;
@@ -182,12 +217,19 @@ export function buildWorld() {
       y += 1.2;
     }
     const topX = Math.sin(lean) * 2.2;
-    for (let i = 0; i < 6; i++) {
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3.0, 5), leafMat);
-      leaf.position.set(topX, y - 0.4, 0);
-      leaf.rotation.z = Math.PI / 2.3;
-      leaf.rotation.y = i * TAU / 6;
+    for (let i = 0; i < 7; i++) {
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.6, 4), i % 2 ? leafMatA : leafMatB);
+      leaf.scale.z = 0.3;                                  // flat blades
+      leaf.position.set(topX, y - 0.35, 0);
+      leaf.rotation.z = Math.PI / 2.12 + (i % 3) * 0.09;   // proper tropical droop
+      leaf.rotation.y = i * TAU / 7 + 0.2;
       palm.add(leaf);
+    }
+    for (let i = 0; i < 3; i++) {
+      const coco = new THREE.Mesh(new THREE.SphereGeometry(0.16, 7, 6), cocoMat);
+      const a = i * TAU / 3;
+      coco.position.set(topX + Math.cos(a) * 0.28, y - 0.55, Math.sin(a) * 0.28);
+      palm.add(coco);
     }
     palm.position.set(wx, 0, wz);
     scene.add(palm);
@@ -203,10 +245,7 @@ export function buildWorld() {
     sandIsle.position.set(isle.x, 0.3, isle.z);
     scene.add(sandIsle);
     if (isle.hill) {
-      const h = new THREE.Mesh(new THREE.ConeGeometry(isle.r * 0.55, isle.r * 0.4, 14),
-        new THREE.MeshLambertMaterial({ color: 0x6cb56f }));
-      h.position.set(isle.x - 2, isle.r * 0.2 + 1.2, isle.z - 2);
-      scene.add(h);
+      buildMound(isle.x - 2, isle.z - 2, isle.r * 0.6, isle.r * 0.45, isle.x * 0.1);
     }
     if (isle.palms === 0) {
       // bare skerry: a couple of boulders

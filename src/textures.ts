@@ -57,6 +57,39 @@ export function makeSailTexture(): THREE.CanvasTexture {
   return t;
 }
 
+/* tiling lacy sea-foam: bright cellular streaks on black, sampled by the water shader */
+export function makeSeaFoamTexture(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 256, 256);
+  // overlapping stroked cells make the lace; drawing 3x3 wrapped keeps it tileable
+  const cells: { x: number; y: number; r: number }[] = [];
+  for (let i = 0; i < 46; i++) cells.push({ x: Math.random() * 256, y: Math.random() * 256, r: 9 + Math.random() * 26 });
+  for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+    for (const cl of cells) {
+      const x = cl.x + ox * 256, y = cl.y + oy * 256;
+      if (x < -40 || x > 296 || y < -40 || y > 296) continue;
+      g.strokeStyle = 'rgba(255,255,255,' + (0.35 + Math.random() * 0.45).toFixed(2) + ')';
+      g.lineWidth = 1.5 + Math.random() * 2.5;
+      g.beginPath();
+      g.ellipse(x, y, cl.r, cl.r * (0.55 + Math.random() * 0.4), Math.random() * Math.PI, 0, Math.PI * 2);
+      g.stroke();
+    }
+  }
+  // soft bright patches so the lace has body
+  for (let i = 0; i < 60; i++) {
+    g.fillStyle = 'rgba(255,255,255,' + (0.12 + Math.random() * 0.25).toFixed(2) + ')';
+    g.beginPath();
+    g.arc(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 5, 0, Math.PI * 2);
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 export function makeFoamSprite(): THREE.CanvasTexture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 64;

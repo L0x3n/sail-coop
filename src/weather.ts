@@ -49,11 +49,13 @@ const RAIN_N = 140;
 /* ---- lightning ---- */
 let flash = 0, boltTimer = 8;
 
-/* ---- color targets ---- */
-const skyZenithFair = new THREE.Color(0x4d9ed8), skyZenithFoul = new THREE.Color(0x33414f);
+/* ---- color targets (fair = the PEAK/SoT palette, foul = the gloom) ---- */
+const skyZenithFair = new THREE.Color(0x2f86d6), skyZenithFoul = new THREE.Color(0x33414f);
+const skyMidFair = new THREE.Color(0x8ecaee), skyMidFoul = new THREE.Color(0x5d6e7a);
 const skyHorizonFair = new THREE.Color(SKY), skyHorizonFoul = new THREE.Color(0x84939e);
-const deepFair = new THREE.Color(0x0e4e8e), deepFoul = new THREE.Color(0x10303f);
-const shallowFair = new THREE.Color(0x2f9ad0), shallowFoul = new THREE.Color(0x3a6878);
+const deepFair = new THREE.Color(0x0a3f5c), deepFoul = new THREE.Color(0x0e2b38);
+const shallowFair = new THREE.Color(0x1d8f8a), shallowFoul = new THREE.Color(0x3a6878);
+const sssFair = new THREE.Color(0x46e3b5), sssFoul = new THREE.Color(0x4e7d74);
 const _c = new THREE.Color();
 const skyU = (skyDome.material as THREE.ShaderMaterial).uniforms;
 
@@ -75,9 +77,10 @@ export function updateWeatherVisuals(dt: number) {
 
   // light + colors slide toward the gloom
   const d = smDark;
-  sun.intensity = lerp(1.45, 0.55, d) + flash * 2.2;
-  hemi.intensity = lerp(0.95, 0.5, d);
+  sun.intensity = lerp(1.5, 0.55, d) + flash * 2.2;
+  hemi.intensity = lerp(1.0, 0.5, d);
   (skyU.uZenith.value as THREE.Color).lerpColors(skyZenithFair, skyZenithFoul, d);
+  (skyU.uMid.value as THREE.Color).lerpColors(skyMidFair, skyMidFoul, d);
   (skyU.uHorizon.value as THREE.Color).lerpColors(skyHorizonFair, skyHorizonFoul, d);
   _c.lerpColors(skyHorizonFair, skyHorizonFoul, d);
   (scene.fog as THREE.Fog).color.copy(_c);
@@ -85,6 +88,7 @@ export function updateWeatherVisuals(dt: number) {
   (fancyUniforms.uSky.value as THREE.Color).copy(_c);
   (fancyUniforms.uDeep.value as THREE.Color).lerpColors(deepFair, deepFoul, d);
   (fancyUniforms.uShallow.value as THREE.Color).lerpColors(shallowFair, shallowFoul, d);
+  (fancyUniforms.uSss.value as THREE.Color).lerpColors(sssFair, sssFoul, d);
 
   // rain follows the camera, drifts with the wind
   const raining = smDark > 0.62;
@@ -112,5 +116,5 @@ export function updateWeatherVisuals(dt: number) {
     }
   }
   flash *= Math.exp(-7 * dt);
-  renderer.toneMappingExposure = 1.12 + flash * 1.4;
+  renderer.toneMappingExposure = 1.18 + flash * 1.4;
 }
