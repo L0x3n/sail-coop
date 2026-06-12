@@ -147,12 +147,14 @@ Målet: skäl att spela "en runda till", utan att bryta lag 2.
   köps här** (skiff = kvick och tippig med få lådplatser; galleon = 14
   lådor och ett vandrande försäkringsärende).
 - **Större lastdäck**: +4 lådplatser (= mer pengar, mer yta att tappa på).
-- **Kanonen**: ny station (sikta/ladda/skjut). Köps som ren dumhet
-  (saluter, skjuta måsar — som hämnas i svärm).
-- **Pråm på släp**: +6 lådor på en girig släpkärra som svänger SJÄLV
-  (pendelfysik) och kan kapsejsa. Mer last = mer styrproblem. Lag 2 i kubik.
-- **Hattar.** Viktigast. Kosmetik som åker av vid knockdown och flyter.
-- **Klart när:** alla köp gör livet roligare och INGET köp gör det lättare.
+- ✅ **Kanonen**: ny station (A/D sikta, W/S höj, LMB skjut, 3 s omladdning).
+  Köpt som ren dumhet — rekyl knuffar skrovet, den som står bakom kanonen
+  golvas, och en träffad mås ger HÄMNDSVÄRM (5–8 bombare).
+- ✅ **Pråm på släp**: +6 lådor på släplina som fiskstjärtar SJÄLV (låg
+  lateral dämpning), rycker i aktern, och KAPSEJSAR vid för vild sväng —
+  dumpar allt, rätar sig efter 10 s. Hitch/unhitch vid hemmaförtöjningen.
+- ✅ **Hattar.** Viktigast. Kosmetik som åker av vid knockdown och flyter.
+- **Klart när:** alla köp gör livet roligare och INGET köp gör det lättare. ✅
 
 ### 3c. Ruttlås
 - Svårare rutter (längre, stormigare, trängre passager) låses upp av guld —

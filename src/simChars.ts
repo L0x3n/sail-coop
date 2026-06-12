@@ -1,6 +1,7 @@
 import { CONFIG, DECK_Y, RAIL_H, STATION_R } from './config';
 import { D2R, clamp, headVec, lerp, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, chars, env, game, layout, myChar, netRole, p2, session, slipAt, tuning } from './state';
+import { boat, chars, env, game, layout, myChar, netRole, owned, p2, session, slipAt, tuning } from './state';
+import { CANNON_BASE, cannon } from './cannon';
 import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { heelGroup } from './shipMesh';
@@ -30,15 +31,21 @@ export function charAxes(c: Char): Axes {
 }
 
 /* =========================== stations =========================== */
-export function nearestStation(c: Char): 'helm' | 'sail' | null {
+export const stationSpot = (st: 'helm' | 'sail' | 'cannon') =>
+  st === 'helm' ? layout.helm : st === 'sail' ? layout.sailSta : layout.cannonSta;
+
+export function nearestStation(c: Char): 'helm' | 'sail' | 'cannon' | null {
   if (c.mode !== 'deck') return null;
-  const dh = Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z);
-  const dm = Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z);
-  if (dh < STATION_R && dh <= dm) return 'helm';
-  if (dm < STATION_R) return 'sail';
-  return null;
+  const opts: ('helm' | 'sail' | 'cannon')[] = owned.cannon ? ['helm', 'sail', 'cannon'] : ['helm', 'sail'];
+  let best: 'helm' | 'sail' | 'cannon' | null = null, bd = STATION_R;
+  for (const st of opts) {
+    const sp = stationSpot(st);
+    const d = Math.hypot(c.pos.x - sp.x, c.pos.z - sp.z);
+    if (d < bd) { bd = d; best = st; }
+  }
+  return best;
 }
-export function stationTakenBy(st: 'helm' | 'sail'): Char | null {
+export function stationTakenBy(st: 'helm' | 'sail' | 'cannon'): Char | null {
   return chars.find(c => c.station === st) || null;
 }
 export function releaseStation(c: Char) { c.station = null; }
@@ -47,7 +54,7 @@ export function tryToggleStation(c: Char) {
   const st = nearestStation(c);
   if (st && !stationTakenBy(st)) {
     c.station = st;
-    const sp = st === 'helm' ? layout.helm : layout.sailSta;
+    const sp = stationSpot(st);
     c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
   }
 }
@@ -148,17 +155,24 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
   if (c.mode === 'deck') {
     // ---- station control: A/D work the station; the mouse looks freely ----
     if (c.station) {
-      const strafe = charAxes(c).strafe;
+      const ax = charAxes(c);
+      const strafe = ax.strafe;
       if (c.station === 'helm') {
         // helmsman faces the bow: D = steer right (rudder is sign-flipped internally)
         boat.rudder = clamp(boat.rudder - strafe * CONFIG.rudderRate * D2R * dt,
           -CONFIG.rudderMax * D2R, CONFIG.rudderMax * D2R);
-      } else {
+      } else if (c.station === 'sail') {
         // trimmer faces aft at the sail: D = boom swings to THEIR right
         boat.boomAngle = clamp(boat.boomAngle + strafe * CONFIG.boomRate * D2R * dt,
           -CONFIG.boomMax * D2R, CONFIG.boomMax * D2R);
+      } else {
+        // gunner faces out over the port rail: D traverses right, W raises
+        // (elevation reaches high enough to threaten even the bomber gull)
+        cannon.yaw = clamp(cannon.yaw - strafe * 1.1 * dt,
+          CANNON_BASE - CONFIG.cannonTraverse, CANNON_BASE + CONFIG.cannonTraverse);
+        cannon.pitch = clamp(cannon.pitch + ax.fwd * 0.9 * dt, 0.03, 1.25);
       }
-      const sp = c.station === 'helm' ? layout.helm : layout.sailSta;
+      const sp = stationSpot(c.station);
       c.pos.x = sp.x; c.pos.z = sp.z; c.vel.x = 0; c.vel.z = 0;
       c.animMoving = false;
       c.mesh.position.set(c.pos.x, DECK_Y, c.pos.z);

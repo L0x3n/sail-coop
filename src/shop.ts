@@ -1,7 +1,8 @@
 import { BOATS } from './config';
-import { boat, chars, game, netRole, owned, prefs, saveProgress } from './state';
+import { boat, chars, game, layout, netRole, owned, prefs, saveProgress } from './state';
 import { HOME_DOCK } from './world';
-import { setBoatPreset } from './shipMesh';
+import { buildShip, setBoatPreset } from './shipMesh';
+import { resetBarge } from './barge';
 import { setHat } from './pirates';
 import { toast } from './hud';
 import * as audio from './audio';
@@ -25,6 +26,8 @@ export const CATALOG: ShopItem[] = [
   { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — same crates, longer falls', price: 160, kind: 'ship', key: 'galleon' },
   { id: 'bigDeck', name: 'Bigger cargo deck', desc: '+4 crates per shipment. More money, more deck to lose it on.', price: 120, kind: 'upgrade', key: 'bigDeck' },
   { id: 'chartNorth', name: 'Northern chart', desc: 'unlocks the North Light route — 32g a crate, long haul', price: 60, kind: 'upgrade', key: 'chartNorth' },
+  { id: 'cannon', name: 'The cannon', desc: 'aim, FIRE, regret. Good for salutes and seagulls. Seagulls remember.', price: 140, kind: 'upgrade', key: 'cannon' },
+  { id: 'barge', name: 'Cargo barge', desc: '+6 crates on a trailer that steers itself and CAN capsize', price: 180, kind: 'upgrade', key: 'barge' },
   { id: 'hatStraw', name: 'Straw hat', desc: 'beach mode. Flies off when you get bonked.', price: 30, kind: 'hat', key: 'hatStraw', style: 'straw' },
   { id: 'hatFancy', name: 'Admiral tricorn', desc: 'gold trim. The gulls aim for it.', price: 45, kind: 'hat', key: 'hatFancy', style: 'fancy' },
 ];
@@ -40,6 +43,8 @@ export function tryBuy(id: string) {
   saveProgress();
   audio.dockedChime();
   toast('Bought: ' + item.name + '!', '#aef7a2');
+  if (id === 'cannon') buildShip(layout.scale);                       // the gun appears on deck
+  if (id === 'barge') toast('Hitch the barge here at the home mooring (shop panel).', '#ffd95e');
   refreshShop();
 }
 
@@ -62,6 +67,25 @@ export function equipShip(id: string) {
   toast('Hull swapped: ' + preset.name + '!', '#aef7a2');
   refreshShop();
 }
+/* hitch/unhitch the barge — host-only, at the home mooring like hull swaps */
+export function equipBarge() {
+  if (netRole === 'guest') { toast('Only the host hitches the barge.', '#dee2e6'); return; }
+  if (!owned.barge) return;
+  if (Math.hypot(boat.pos.x - HOME_DOCK.x, boat.pos.z - HOME_DOCK.z) > 26 || !boat.anchored) {
+    toast('Hitch the barge at the home mooring, anchor down.', '#ff8787');
+    return;
+  }
+  prefs.barge = !prefs.barge;
+  saveProgress();
+  if (prefs.barge) {
+    resetBarge();
+    toast('Barge hitched! +6 crates, double the steering problems.', '#aef7a2');
+  } else {
+    toast('Barge unhitched.', '#dee2e6');
+  }
+  refreshShop();
+}
+
 export function equipHat(charIdx: number, style: string) {
   const item = CATALOG.find(i => i.style === style);
   if (item && item.key && !owned[item.key] && style !== 'captain' && style !== 'bandana') return;
@@ -111,6 +135,12 @@ export function refreshShop() {
         name: item.name, desc: item.desc,
         right: has ? (prefs.ship === item.id ? 'IN USE' : 'Use') : item.price + 'g',
         cb: has ? () => equipShip(item.id) : () => buyHandler(item.id),
+      });
+    } else if (item.id === 'barge') {
+      rows.push({
+        name: item.name, desc: item.desc,
+        right: has ? (prefs.barge ? 'Unhitch' : 'Hitch') : item.price + 'g',
+        cb: has ? () => equipBarge() : () => buyHandler(item.id),
       });
     } else {
       rows.push({

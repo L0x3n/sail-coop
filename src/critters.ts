@@ -106,6 +106,8 @@ export function gullSwarm(n: number) {
   swarmQueue = n;
   passTimer = Math.min(passTimer, 0.5);
 }
+/* the cannon wants to know where the bomber is (it is a legitimate target) */
+export const bomberPos = (): THREE.Vector3 | null => (run.active ? bomber.position : null);
 
 /* falling blobs live in BOAT-LOCAL space so they land exactly on deck */
 interface Blob { mesh: THREE.Mesh; vy: number; active: boolean; }

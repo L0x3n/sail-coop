@@ -9,15 +9,17 @@ import { fancyUniforms, fancyWaterMesh, flatWater, cycleWater, updateWater, wate
 import { buildWorld, islandPos } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
-import { equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
+import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
 import { spawnDroplets, spawnWake, updateSplash, updateStreaks, updateWake } from './effects';
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
 import { director, updateDirector } from './director';
-import { clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
+import { bomberPos, clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
+import { balls, cannon, fireCannon, updateCannon, updateCannonVisuals } from './cannon';
+import { barge, updateBarge, updateBargeVisual } from './barge';
 import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
 import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
@@ -76,7 +78,8 @@ function handleLocalKeys() {
       else handsEdge(p1);
     }
     if (code === 'Mouse0' && !session.docked) {
-      if (netRole === 'guest') sendMopTap();
+      if (netRole === 'guest') sendMopTap();          // host routes it (cannon vs mop)
+      else if (p1.station === 'cannon') fireCannon(p1);
       else mopTap(p1);
     }
   }
@@ -91,7 +94,9 @@ function physicsStep(dt: number) {
   updateWind(dt, session.simT);
   if (!session.docked) {
     updateBoat(dt);
+    updateBarge(dt);
     updateHands(dt);
+    updateCannon(dt);
     updateCargo(dt);
     chars.forEach((c, i) => { if (!charActive(c)) return; updateChar(c, i, dt, session.simT); });
     if (session.started) session.runTime += dt;
@@ -147,6 +152,8 @@ function visualStep(dt: number) {
   updateCritters(dt, t);
   updateMopVisual(t);
   updateCargoVisual(t);
+  updateCannonVisuals(dt);
+  updateBargeVisual(t);
   updateHats(dt, t);
   if (shopOpen) refreshShop();
   updateBoatVisuals(dt, t);
@@ -205,8 +212,10 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS, mops, crates, splats, game,
+  env, layout, BOATS, mops, crates, splats, game, cannon, barge, gulls,
   _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
+  _cannon: { fireCannon, balls, bomberPos },
+  _shop: { tryBuy, equipBarge },
   _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
   _cargo: { spawnBatch },
   _director: director,

@@ -2,11 +2,13 @@ import Peer, { DataConnection } from 'peerjs';
 import { BOATS, DECK_Y } from './config';
 import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, env, game, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { equipHat, setShipRelay, tryBuy } from './shop';
 import { setHat } from './pirates';
-import { setBoatPreset } from './shipMesh';
+import { buildShip, setBoatPreset } from './shipMesh';
+import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
+import { barge, resetBarge } from './barge';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
 import type { BoatPreset } from './types';
@@ -41,6 +43,7 @@ setFxRelay(
   id => { if (netRole === 'host') netSend({ k: 'fx', fx: 'unsplat', id }); },
 );
 setShipRelay(id => { if (netRole === 'host') netSend({ k: 'boat', id }); });
+setBoomRelay((x, y, z, vx, vy, vz) => { if (netRole === 'host') netSend({ k: 'boom', x, y, z, vx, vy, vz }); });
 
 let chosenBoat: BoatPreset = BOATS[1];
 
@@ -53,6 +56,8 @@ export function beginPlay() {
   resetHands(netRole === 'guest' || guestHere);
   clearSplats();
   resetCargo();
+  resetCannon();
+  resetBarge();
   applyAspect();
 }
 export function startSolo(p?: BoatPreset) {
@@ -128,11 +133,12 @@ export function hostOnData(m: NetMsg) {
     if (typeof m.f === 'number' && !p2.holding) p2.facing = wrapPi(m.f);
     session.started = true;
   } else if (m.k === 'g') {
-    if (!session.docked && p2.mode === 'deck') pressE(p2);
+    if (!session.docked) pressE(p2);        // works ashore too (deliver, board, shop)
   } else if (m.k === 'f') {
     handsEdge(p2);
   } else if (m.k === 'm0') {
-    mopTap(p2);
+    if (p2.station === 'cannon') fireCannon(p2);
+    else mopTap(p2);
   } else if (m.k === 'buy') {
     tryBuy(m.id);
   } else if (m.k === 'hat') {
@@ -142,6 +148,8 @@ export function hostOnData(m: NetMsg) {
     resetHands(guestHere);
     clearSplats();
     resetCargo();
+    resetCannon();
+    resetBarge();
     netSend({ k: 'reset' });
   }
 }
@@ -160,7 +168,8 @@ export function startJoin(codeRaw: string) {
   peer.on('error', e => { netStatusEl.textContent = 'Could not reach ' + code + ' (' + e.type + ').'; });
 }
 
-const netT: { boat: Snapshot['b'] | null; c: (CharSnap | null)[] } = { boat: null, c: [null, null] };
+const netT: { boat: Snapshot['b'] | null; c: (CharSnap | null)[]; barge: Snapshot['br'] | null } =
+  { boat: null, c: [null, null], barge: null };
 export function guestOnData(m: NetMsg) {
   if (!m || typeof m !== 'object') return;
   if (m.k === 'start') {
@@ -183,7 +192,8 @@ export function guestOnData(m: NetMsg) {
     else removeSplat(m.id);
     return;
   }
-  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); resetCargo(); netT.boat = null; netT.c = [null, null]; return; }
+  if (m.k === 'boom') { applyBoom(m.x, m.y, m.z, m.vx, m.vy, m.vz); return; }
+  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); resetCargo(); resetCannon(); resetBarge(); netT.boat = null; netT.c = [null, null]; netT.barge = null; return; }
   if (m.k === 's') applySnapshot(m);
 }
 export function applySnapshot(m: Snapshot) {
@@ -205,6 +215,17 @@ export function applySnapshot(m: Snapshot) {
     owned.galleon = m.up.gl;
     owned.hatStraw = m.up.hs;
     owned.hatFancy = m.up.hf;
+    owned.barge = m.up.bg ?? false;
+    const hadCannon = owned.cannon;
+    owned.cannon = m.up.ca ?? false;
+    if (owned.cannon && !hadCannon) buildShip(layout.scale);   // the gun appears for the matey too
+  }
+  if (m.cn) { cannon.yaw = m.cn.y; cannon.pitch = m.cn.p; cannon.reload = m.cn.r; }
+  if (m.br) {
+    prefs.barge = m.br.a;
+    netT.barge = m.br;
+    barge.roll = m.br.rl;
+    barge.capsized = m.br.cap;
   }
   session.runTime = m.t;
   if (m.d && !session.docked) showDocked(fmtTime(m.t));
@@ -234,8 +255,7 @@ export function applySnapshot(m: Snapshot) {
       } else {
         if (c.mesh.parent !== scene) { heelGroup.remove(c.mesh); scene.add(c.mesh); }
         if (cm.m === 'water') {
-          spawnSplash(cm.x, cm.z, true);
-          if (c === myChar()) toast('OVERBOARD!', '#ffd95e');
+          spawnSplash(cm.x, cm.z, true);     // straight in, no announcement
         } else if (wasWater) {
           spawnSplash(cm.x, cm.z, false);
         }
@@ -257,6 +277,11 @@ export function guestStep(dt: number) {
     boat.pos.x = lerp(boat.pos.x, netT.boat.x, k);
     boat.pos.z = lerp(boat.pos.z, netT.boat.z, k);
     boat.yaw = wrapPi(boat.yaw + wrapPi(netT.boat.yaw - boat.yaw) * k);
+  }
+  if (netT.barge && netT.barge.a) {
+    barge.pos.x = lerp(barge.pos.x, netT.barge.x, k);
+    barge.pos.z = lerp(barge.pos.z, netT.barge.z, k);
+    barge.yaw = wrapPi(barge.yaw + wrapPi(netT.barge.yw - barge.yaw) * k);
   }
   chars.forEach((c, i) => {
     const tg = netT.c[i];
@@ -315,7 +340,10 @@ export function hostNetStep(dt: number) {
     cg: cargoSnap(),
     g: { gold: game.gold, del: game.delivered, lost: game.lost },
     rt: routeIdx,
-    up: { bd: owned.bigDeck, ch: owned.chartNorth, sk: owned.skiff, gl: owned.galleon, hs: owned.hatStraw, hf: owned.hatFancy },
+    up: { bd: owned.bigDeck, ch: owned.chartNorth, sk: owned.skiff, gl: owned.galleon, hs: owned.hatStraw, hf: owned.hatFancy,
+          ca: owned.cannon, bg: owned.barge },
+    cn: { y: cannon.yaw, p: cannon.pitch, r: cannon.reload },
+    br: { a: owned.barge && prefs.barge, x: barge.pos.x, z: barge.pos.z, yw: barge.yaw, rl: barge.roll, cap: barge.capsized },
     c: chars.map(c => ({
       x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station,
       gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT, ht: c.hat,

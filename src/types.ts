@@ -38,7 +38,7 @@ export interface EyeState {
 }
 
 export type CharMode = 'deck' | 'water' | 'shore';
-export type Station = 'helm' | 'sail' | null;
+export type Station = 'helm' | 'sail' | 'cannon' | null;
 
 export interface Char {
   name: string;
@@ -75,7 +75,7 @@ export interface CharSnap {
   gb: number; hm: boolean; sc: number; ht: string;
 }
 export interface MopSnap { x: number; z: number; h: number; held: number; thrown: boolean; on: boolean; }
-/* crate states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone */
+/* crate states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone · 5 barge slot (x = slot) */
 export interface CrateSnap { s: number; x: number; z: number; h: number; cr: number; l: boolean; }
 export interface Snapshot {
   k: 's';
@@ -88,7 +88,9 @@ export interface Snapshot {
   cg: CrateSnap[];
   g: { gold: number; del: number; lost: number };
   rt: number;     // active route index
-  up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean };
+  up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean; ca: boolean; bg: boolean };
+  cn: { y: number; p: number; r: number };                                       // cannon aim + reload
+  br: { a: boolean; x: number; z: number; yw: number; rl: number; cap: number }; // the barge
 }
 export type NetMsg =
   | Snapshot
@@ -103,6 +105,7 @@ export type NetMsg =
   | { k: 'buy'; id: string }                    // matey asks the host to buy/equip
   | { k: 'hat'; id: string }                    // matey picked a hat for themselves
   | { k: 'boat'; id: string }                   // host switched the hull
+  | { k: 'boom'; x: number; y: number; z: number; vx: number; vy: number; vz: number } // cannon fired
   | { k: 'reset' }
   | { k: 'restart?' };
 

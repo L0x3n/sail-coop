@@ -9,6 +9,7 @@ export const layout = {
   hullW: HULL_W, hullL: HULL_L,
   helm: v2(0, -2.65),
   sailSta: v2(0, 1.45),
+  cannonSta: v2(-DECK_X + 1.35, -1.3),   // just inboard of the port-side gun
   gaps: GAPS.map(g => ({ ...g })),
 };
 export function applyLayoutScale(S: number) {
@@ -19,6 +20,7 @@ export function applyLayoutScale(S: number) {
   layout.hullL = HULL_L * S;
   layout.helm = v2(0, -2.65 * S);
   layout.sailSta = v2(0, 1.45 * S);
+  layout.cannonSta = v2(-DECK_X * S + 1.35, -1.3 * S);
   layout.gaps = GAPS.map(g => ({ z0: g.z0 * S, z1: g.z1 * S }));
 }
 
@@ -113,10 +115,13 @@ export const owned = {
   chartNorth: false,
   hatStraw: false,
   hatFancy: false,
+  cannon: false,
+  barge: false,
 };
 export const prefs = {
   ship: 'sloop',
   hats: ['captain', 'bandana'] as string[],   // per char index
+  barge: false,                               // hitched right now?
 };
 export function saveProgress() {
   try {
@@ -132,6 +137,7 @@ export function loadProgress() {
     Object.assign(owned, s.owned ?? {});
     if (s.prefs?.ship) prefs.ship = s.prefs.ship;
     if (Array.isArray(s.prefs?.hats)) prefs.hats = s.prefs.hats;
+    if (typeof s.prefs?.barge === 'boolean') prefs.barge = s.prefs.barge;
   } catch { /* corrupt save -> fresh start */ }
 }
 loadProgress();

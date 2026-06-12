@@ -148,6 +148,30 @@ export function thunder() {
   src.start(t); src.stop(t + 2.4);
 }
 
+export function boom() {
+  if (!ctx || !master) return;
+  const t = ctx.currentTime;
+  // the bark
+  const crack = ctx.createBufferSource();
+  crack.buffer = noiseBuffer(ctx, 0.25);
+  const cf = ctx.createBiquadFilter();
+  cf.type = 'lowpass'; cf.frequency.value = 1400;
+  const cg = ctx.createGain();
+  cg.gain.setValueAtTime(0.3, t);
+  cg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  crack.connect(cf).connect(cg).connect(master);
+  crack.start(t); crack.stop(t + 0.25);
+  // the chest-thump
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(110, t);
+  o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+  g.gain.setValueAtTime(0.32, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  o.connect(g).connect(master);
+  o.start(t); o.stop(t + 0.42);
+}
+
 export function thwack() {
   if (!ctx || !master) return;
   const t = ctx.currentTime;

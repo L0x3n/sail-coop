@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG, DECK_Y, MAST_POS } from './config';
 import { clamp, dot2, headVec, lerp, wrapPi } from './mathUtil';
 import { scene } from './scene';
-import { applyLayoutScale, applyTuning, boat, env, layout, tuning, wind } from './state';
+import { applyLayoutScale, applyTuning, boat, env, layout, owned, tuning, wind } from './state';
 import { makePlankTexture, makeSailTexture } from './textures';
 import { dockArrow } from './world';
 import * as audio from './audio';
@@ -39,6 +39,8 @@ let shipRig: THREE.Group | null = null;
 let anchorRig: THREE.Group;          // rope + anchor, visible while anchored
 export let boomGroup: THREE.Group;
 export let wheelGroup: THREE.Group;
+export let cannonGroup: THREE.Group; // swivels with the aim (cannon.ts drives it)
+export let cannonPivot: THREE.Group; // barrel elevation
 let rudderGroup: THREE.Group;
 let sailGeo: THREE.PlaneGeometry;
 let sailBase: Float32Array;
@@ -290,6 +292,43 @@ export function buildShip(S: number) {
     const pedestal = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.75, 0.16), woodDark);
     pedestal.position.set(0, -0.55, 0);
     wheelGroup.add(pedestal);
+  }
+
+  /* ---------------- the cannon (port side; bought in the shop) ---------------- */
+  cannonGroup = new THREE.Group();
+  cannonGroup.position.set(-layout.deckX + 0.55, DECK_Y, -1.3 * S);
+  R.add(cannonGroup);
+  {
+    const iron = new THREE.MeshLambertMaterial({ color: 0x2f3338 });
+    // carriage: two cheeks + axles + little wheels
+    for (const cx of [-0.18, 0.18]) {
+      const cheek = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.62), woodDark);
+      cheek.position.set(cx, 0.21, -0.02);
+      cannonGroup.add(cheek);
+    }
+    for (const wz of [-0.22, 0.2]) {
+      for (const wx of [-0.24, 0.24]) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 10), woodPale);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.11, wz);
+        cannonGroup.add(wheel);
+      }
+    }
+    // barrel on its elevation pivot
+    cannonPivot = new THREE.Group();
+    cannonPivot.position.set(0, 0.42, 0);
+    cannonGroup.add(cannonPivot);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.125, 1.05, 10), iron);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.z = 0.32;
+    cannonPivot.add(barrel);
+    const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.022, 6, 12), iron);
+    muzzle.position.z = 0.84;
+    cannonPivot.add(muzzle);
+    const breech = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), iron);
+    breech.position.z = -0.24;
+    cannonPivot.add(breech);
+    cannonGroup.visible = owned.cannon;
   }
 
   /* ---------------- mast, boom, sails, rigging, flag ---------------- */

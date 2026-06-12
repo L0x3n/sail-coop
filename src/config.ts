@@ -101,6 +101,22 @@ export const CONFIG = {
   mouseSens: 0.0024,       // mouse-look radians per pixel
   headBob: 0.06,           // walking head-bob amplitude
 
+  // --- the cannon (pure mischief — law 2: never useful) ---
+  cannonReload: 3.0,       // seconds between shots
+  cannonSpeed: 30,         // muzzle velocity (enough sky to threaten the bomber)
+  cannonTraverse: 1.1,     // radians of swing each side of straight-out
+  cannonRecoil: 0.6,       // boat shove per shot (opposite the muzzle)
+  cannonBreech: 1.0,       // stand this close behind the breech = you get floored
+
+  // --- the barge (greedy trailer; swings itself, capsizes) ---
+  bargeRope: 7.0,          // tow rope length from the stern
+  bargePull: 3.2,          // rope spring strength (taut only)
+  bargeDragBack: 0.22,     // fraction of rope pull thrown back at the boat
+  bargeYawTug: 0.05,       // stern torque per unit lateral rope pull
+  bargeLatDamp: 0.5,       // LOW lateral damping = the fishtail
+  bargeCapsizeRoll: 0.5,   // swing roll (rad) beyond this and over she goes
+  bargeRightT: 10,         // seconds floating keel-up before righting
+
   // --- world ---
   islandDist: 260,         // spawn -> island distance (island is upwind)
   islandRadius: 38,

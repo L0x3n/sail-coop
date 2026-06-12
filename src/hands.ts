@@ -6,6 +6,8 @@ import { heelGroup } from './shipMesh';
 import { charAxes, localToWorld2, nearestStation, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
 import { anyLashable, lashed, nearestCrateFor, pickUp, putDown, setLashed } from './cargo';
+import { barge, bargeActive, freeSlot, nearBarge, stowCrate } from './barge';
+import { cannon } from './cannon';
 import { BOARD_SPOT, DELIVERY, ROUTES, SHOP_SPOT, nextUnlockedRoute, routeIdx, setRoute } from './world';
 import { spawnSplash } from './effects';
 import { localDrag } from './input';
@@ -135,10 +137,13 @@ function respawnMop(m: Mop, splashWorld: boolean) {
    the HUD prompts from it, pressE executes it (host-side).
    =================================================================== */
 export type InteractKind =
-  | 'crate-put' | 'crate-deliver' | 'crate-take' | 'crate-fish'
+  | 'crate-put' | 'crate-deliver' | 'crate-take' | 'crate-fish' | 'crate-barge'
   | 'mop-put' | 'mop-scrub' | 'mop-take'
   | 'anchor' | 'route' | 'lash' | 'shop'
   | 'station' | 'station-leave' | 'grab-hint';
+
+const stationName = (st: 'helm' | 'sail' | 'cannon') =>
+  st === 'helm' ? 'HELM' : st === 'sail' ? 'SAIL' : 'CANNON';
 
 const anchorSpot = () => ({ x: 0, z: layout.deckZ * 0.88 });
 
@@ -152,9 +157,20 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
         return { kind: 'crate-deliver', label: 'E — DELIVER the crate!' };
       }
     }
+    if (bargeActive() && barge.capsized <= 0 && freeSlot() >= 0 && nearBarge(c)) {
+      return { kind: 'crate-barge', label: 'E — stow the crate on the BARGE' };
+    }
     return { kind: 'crate-put', label: 'E — put the crate down (F: toss)' };
   }
-  if (c.station) return { kind: 'station-leave', label: 'E — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL') };
+  if (c.station === 'cannon') {
+    return {
+      kind: 'station-leave',
+      label: cannon.reload > 0
+        ? 'E — leave the CANNON · reloading… · A/D + W/S aim'
+        : 'E — leave the CANNON · LMB = FIRE! · A/D + W/S aim',
+    };
+  }
+  if (c.station) return { kind: 'station-leave', label: 'E — let go of the ' + stationName(c.station) };
   // holding the mop
   if (mopOf(c)) {
     if (c.mode === 'deck' && nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) {
@@ -196,7 +212,7 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
   // stations
   if (c.mode === 'deck') {
     const st = nearestStation(c);
-    if (st) return { kind: 'station', label: 'E — man the ' + (st === 'helm' ? 'HELM' : 'SAIL') };
+    if (st) return { kind: 'station', label: 'E — man the ' + stationName(st) };
     const other = chars[1 - chars.indexOf(c)];
     if (other && charActive(other) && other.mode === 'deck' && other.grabbedBy < 0 &&
         Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) < CONFIG.grabRange) {
@@ -213,6 +229,9 @@ export function pressE(c: Char) {
     case 'crate-put':
     case 'crate-deliver':
       putDown(c);
+      break;
+    case 'crate-barge':
+      stowCrate(c);
       break;
     case 'crate-take':
     case 'crate-fish': {

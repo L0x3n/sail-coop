@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, rightVec } from './mathUtil';
-import { boat, charActive, chars, game, layout, owned, saveProgress, slipAt, tuning, wind } from './state';
+import { boat, charActive, chars, game, layout, owned, prefs, saveProgress, slipAt, tuning, wind } from './state';
+import { bargeActive, bargeGroup, slotLocal, slotWorld } from './barge';
 import { scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { makePlankTexture } from './textures';
@@ -19,13 +20,13 @@ import type { Char } from './types';
    pirates), fall out through the gangway gaps, float for a while, and
    pay out when carried into the delivery circle. The round IS these.
    =================================================================== */
-export const CRATE_N = 10;                                   // pool size (big deck uses all of it)
-export const batchSize = () => (owned.bigDeck ? 10 : 6);
+export const CRATE_N = 16;                                   // pool size (big deck + barge use all of it)
+export const batchSize = () => (owned.bigDeck ? 10 : 6) + (owned.barge && prefs.barge ? 6 : 0);
 export const payPerCrate = () => ROUTES[routeIdx].pay;
 
-/* states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone */
+/* states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone · 5 barge slot (x = slot idx) */
 export interface Crate {
-  s: 0 | 1 | 2 | 3 | 4;
+  s: 0 | 1 | 2 | 3 | 4 | 5;
   x: number; z: number;
   vx: number; vz: number;
   carrier: number;
@@ -123,6 +124,12 @@ export function nearestCrateFor(c: Char): { i: number; fish: boolean } | null {
       const w = localToWorld2(c.pos);
       const d = Math.hypot(cr.x - w.x, cr.z - w.z);
       if (d < 3.0 && d < bd) { bi = i; bFish = true; bd = d; }
+    } else if (cr.s === 5 && (c.mode === 'deck' || c.mode === 'shore')) {
+      // reach over and take a crate off the barge
+      const w = c.mode === 'deck' ? localToWorld2(c.pos) : c.pos;
+      const sw = slotWorld(cr.x);
+      const d = Math.hypot(sw.x - w.x, sw.z - w.z);
+      if (d < 2.4 && d < bd) { bi = i; bFish = false; bd = d; }
     }
   });
   return bi >= 0 ? { i: bi, fish: bFish } : null;
@@ -291,7 +298,14 @@ export function updateCargoVisual(t: number) {
       }
     }
     cr.lashMesh.visible = cr.s === 1 && cr.lashed;
-    if (cr.s === 1) {
+    if (cr.s === 5) {
+      // riding the barge: parented to its deck so it heels and capsizes along
+      const sl = slotLocal(cr.x);
+      if (m.parent !== bargeGroup) bargeGroup.add(m);
+      m.position.set(sl.x, 0.55, sl.z);
+      m.rotation.set(0, 0, 0);
+      m.visible = bargeActive();
+    } else if (cr.s === 1) {
       if (m.parent !== heelGroup) heelGroup.add(m);
       m.position.set(cr.x, DECK_Y + 0.28, cr.z);
       m.rotation.set(0, 0, 0);
@@ -327,5 +341,5 @@ export function cargoSnap() {
 }
 export const respawnPending = () => respawnT > 0;
 export const cratesAboard = () =>
-  crates.filter(cr => cr.s === 1 || (cr.s === 2 && chars[cr.carrier]?.mode === 'deck')).length;
+  crates.filter(cr => cr.s === 1 || cr.s === 5 || (cr.s === 2 && chars[cr.carrier]?.mode === 'deck')).length;
 export const cratesLeft = () => crates.filter(cr => cr.s !== 4).length;
