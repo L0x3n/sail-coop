@@ -22,8 +22,8 @@ export interface ShopItem {
   style?: string;        // hat style id
 }
 export const CATALOG: ShopItem[] = [
-  { id: 'skiff', name: 'The Skiff', desc: 'small, twitchy, tips like a coin — 6 crates', price: 80, kind: 'ship', key: 'skiff' },
-  { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — same crates, longer falls', price: 160, kind: 'ship', key: 'galleon' },
+  { id: 'skiff', name: 'The Skiff', desc: 'small, twitchy, tips like a coin — 4 crates, quick runs', price: 80, kind: 'ship', key: 'skiff' },
+  { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — 14 crates of walking liability', price: 160, kind: 'ship', key: 'galleon' },
   { id: 'bigDeck', name: 'Bigger cargo deck', desc: '+4 crates per shipment. More money, more deck to lose it on.', price: 120, kind: 'upgrade', key: 'bigDeck' },
   { id: 'chartNorth', name: 'Northern chart', desc: 'unlocks the North Light route — 32g a crate, long haul', price: 60, kind: 'upgrade', key: 'chartNorth' },
   { id: 'cannon', name: 'The cannon', desc: 'aim, FIRE, regret. Good for salutes and seagulls. Seagulls remember.', price: 140, kind: 'upgrade', key: 'cannon' },

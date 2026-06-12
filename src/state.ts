@@ -24,6 +24,9 @@ export function applyLayoutScale(S: number) {
   layout.gaps = GAPS.map(g => ({ z0: g.z0 * S, z1: g.z1 * S }));
 }
 
+/* --- active hull's cargo identity (set by setBoatPreset) --- */
+export const shipInfo = { crates: 6 };
+
 /* --- per-boat handling numbers (preset overrides on top of CONFIG) --- */
 export const tuning = {
   sailPower: CONFIG.sailPower,

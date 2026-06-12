@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG, DECK_Y, MAST_POS } from './config';
 import { clamp, dot2, headVec, lerp, wrapPi } from './mathUtil';
 import { scene } from './scene';
-import { applyLayoutScale, applyTuning, boat, env, layout, owned, tuning, wind } from './state';
+import { applyLayoutScale, applyTuning, boat, env, layout, owned, shipInfo, tuning, wind } from './state';
 import { makePlankTexture, makeSailTexture } from './textures';
 import { dockArrow } from './world';
 import * as audio from './audio';
@@ -432,6 +432,7 @@ export function buildShip(S: number) {
 export function setBoatPreset(p: BoatPreset) {
   applyLayoutScale(p.scale);
   applyTuning(p.tune);
+  shipInfo.crates = p.crates;
   buildShip(p.scale);
 }
 

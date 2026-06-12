@@ -114,6 +114,7 @@ export interface BoatPreset {
   name: string;
   desc: string;
   scale: number;
+  crates: number;   // base shipment size — cargo capacity IS the boat's identity
   tune: Partial<{
     sailPower: number; rudderAuthority: number; turnDrag: number;
     maxHeel: number; heelSlide: number; fwdDragQuad: number; yawDamp: number;

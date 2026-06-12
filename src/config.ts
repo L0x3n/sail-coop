@@ -136,17 +136,17 @@ export const STATION_R = 1.15;
 import type { BoatPreset } from './types';
 export const BOATS: BoatPreset[] = [
   {
-    id: 'skiff', name: 'Skiff', scale: 1.44,
+    id: 'skiff', name: 'Skiff', scale: 1.44, crates: 4,
     desc: 'Small & nimble — turns on a coin, tips like one too',
     tune: { sailPower: 0.215, rudderAuthority: 0.24, turnDrag: 0.34, maxHeel: 0.31, heelSlide: 30, fwdDragQuad: 0.036, yawDamp: 1.1 },
   },
   {
-    id: 'sloop', name: 'Sloop', scale: 2.0,
+    id: 'sloop', name: 'Sloop', scale: 2.0, crates: 6,
     desc: 'The trusty all-rounder',
     tune: {},
   },
   {
-    id: 'galleon', name: 'Galleon', scale: 2.84,
+    id: 'galleon', name: 'Galleon', scale: 2.84, crates: 14,
     desc: 'Huge & stately — plan your turns a week ahead',
     tune: { sailPower: 0.27, rudderAuthority: 0.085, turnDrag: 0.52, maxHeel: 0.17, heelSlide: 20, fwdDragQuad: 0.047, yawDamp: 1.45 },
   },

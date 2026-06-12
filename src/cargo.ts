@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, rightVec } from './mathUtil';
-import { boat, charActive, chars, game, layout, owned, prefs, saveProgress, slipAt, tuning, wind } from './state';
+import { boat, charActive, chars, game, layout, owned, prefs, saveProgress, shipInfo, slipAt, tuning, wind } from './state';
 import { bargeActive, bargeGroup, slotLocal, slotWorld } from './barge';
 import { scene } from './scene';
 import { heelGroup } from './shipMesh';
@@ -20,8 +20,9 @@ import type { Char } from './types';
    pirates), fall out through the gangway gaps, float for a while, and
    pay out when carried into the delivery circle. The round IS these.
    =================================================================== */
-export const CRATE_N = 16;                                   // pool size (big deck + barge use all of it)
-export const batchSize = () => (owned.bigDeck ? 10 : 6) + (owned.barge && prefs.barge ? 6 : 0);
+export const CRATE_N = 24;                                   // pool size (galleon + big deck + barge maxes it)
+export const batchSize = () =>
+  shipInfo.crates + (owned.bigDeck ? 4 : 0) + (owned.barge && prefs.barge ? 6 : 0);
 export const payPerCrate = () => ROUTES[routeIdx].pay;
 
 /* states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone · 5 barge slot (x = slot idx) */
@@ -95,8 +96,8 @@ export function spawnBatch() {
   const n = batchSize();
   crates.forEach((c, i) => {
     c.s = i < n ? 0 : 4;
-    c.x = HOME_LOAD.x - 0.8 + (i % 2) * 1.6;
-    c.z = HOME_LOAD.z - 1.0 + Math.floor(i / 2) * 1.0;
+    c.x = HOME_LOAD.x - 1.2 + (i % 3) * 1.2;             // 3-wide grid keeps big shipments on the pier
+    c.z = HOME_LOAD.z - 1.0 + Math.floor(i / 3) * 1.0;
     c.vx = 0; c.vz = 0;
     c.carrier = -1;
     c.floatT = 0;
