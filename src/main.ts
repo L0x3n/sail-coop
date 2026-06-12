@@ -122,9 +122,10 @@ function visualStep(dt: number) {
     const bow = localToWorld2(v2(0, layout.hullL / 2 - 0.3));
     spawnDroplets(bow.x, bow.z, 3, 2.4, 2.6);
   }
-  // sun (shadow box), sky dome, clouds and gulls follow the action
-  sun.position.set(boat.pos.x + 80, 120, boat.pos.z + 40);
-  sun.target.position.set(boat.pos.x, 0, boat.pos.z);
+  // sun (shadow box), sky dome, clouds and gulls follow the action.
+  // the shadow box tracks the CAMERA so land shadows render ashore too
+  sun.position.set(cam1.position.x + 80, 120, cam1.position.z + 40);
+  sun.target.position.set(cam1.position.x, 0, cam1.position.z);
   skyDome.position.copy(cam1.position);
   for (const cl of clouds) {
     cl.position.x += Math.sin(wind.angle) * wind.strength * 0.18 * dt;

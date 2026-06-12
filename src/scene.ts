@@ -25,13 +25,14 @@ scene.add(hemi);
 export const sun = new THREE.DirectionalLight(0xffe7b0, 1.5);
 sun.position.set(80, 120, 40);
 scene.add(sun);
-// real-time shadows: the shadow box follows the boat (set each frame)
+// real-time shadows: the shadow box follows the CAMERA (set each frame), so
+// land — islands, palms, piers — casts shadows whether you're aboard or ashore
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.camera.near = 40; sun.shadow.camera.far = 320;
-sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
-sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
-sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03;
+sun.shadow.camera.left = -46; sun.shadow.camera.right = 46;
+sun.shadow.camera.top = 46; sun.shadow.camera.bottom = -46;
+sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.035;
 scene.add(sun.target);
 
 /* --- sky dome: warm horizon -> azure -> deep blue zenith, sun glow, follows the camera --- */
@@ -62,26 +63,55 @@ skyDome.userData.noShadow = true;
 skyDome.frustumCulled = false;
 scene.add(skyDome);
 
-/* --- puffy faceted clouds drifting with the wind --- */
+/* --- puffy faceted clouds: bright sunlit tops, cool shaded bellies --- */
 export const clouds: THREE.Group[] = [];
 {
-  const cloudMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff, emissive: 0xa9c4d8, emissiveIntensity: 0.5, flatShading: true,
+  // sun catches the rounded tops; undersides fall into a cooler grey shadow
+  const topMat = new THREE.MeshLambertMaterial({
+    color: 0xffffff, emissive: 0x9ab4cc, emissiveIntensity: 0.28, flatShading: true,
   });
-  for (let i = 0; i < 9; i++) {
+  const bellyMat = new THREE.MeshLambertMaterial({
+    color: 0xb7c6d6, emissive: 0x6f8597, emissiveIntensity: 0.22, flatShading: true,
+  });
+  const makeCloud = (sf: number): THREE.Group => {
     const cl = new THREE.Group();
-    const n = 4 + (i % 3);
-    for (let k = 0; k <= n; k++) {
-      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(6 + Math.random() * 9, 1), cloudMat);
-      puff.position.set((Math.random() - 0.5) * 34, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 16);
-      puff.scale.set(1, 0.42 + Math.random() * 0.12, 0.85);
+    // wide cool base layer
+    const baseN = 3 + ((Math.random() * 2) | 0);
+    for (let k = 0; k <= baseN; k++) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry((7 + Math.random() * 6) * sf, 1), bellyMat);
+      puff.position.set((Math.random() - 0.5) * 30 * sf, -1.4 - Math.random() * 1.6, (Math.random() - 0.5) * 14 * sf);
+      puff.scale.set(1, 0.32, 0.82);
       puff.rotation.y = Math.random() * Math.PI;
       puff.userData.noShadow = true;
       cl.add(puff);
     }
+    // bright rounded tops sitting above the base
+    const topN = 3 + ((Math.random() * 3) | 0);
+    for (let k = 0; k <= topN; k++) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry((5 + Math.random() * 7) * sf, 1), topMat);
+      puff.position.set((Math.random() - 0.5) * 22 * sf, (1 + Math.random() * 3.5) * sf, (Math.random() - 0.5) * 10 * sf);
+      puff.scale.set(1, 0.6 + Math.random() * 0.22, 0.86);
+      puff.rotation.y = Math.random() * Math.PI;
+      puff.userData.noShadow = true;
+      cl.add(puff);
+    }
+    return cl;
+  };
+  // the drifting cloudscape (moved + recycled around the boat in main)
+  for (let i = 0; i < 9; i++) {
+    const cl = makeCloud(1);
     cl.position.set((Math.random() - 0.5) * 1100, 70 + Math.random() * 55, (Math.random() - 0.5) * 1100);
     scene.add(cl);
     clouds.push(cl);
+  }
+  // a few towering cumulus parked low on the horizon, ringing the play area
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + Math.random() * 0.5;
+    const r = 820 + Math.random() * 360;
+    const cl = makeCloud(2.4 + Math.random() * 1.1);
+    cl.position.set(Math.cos(a) * r, 42 + Math.random() * 26, -130 + Math.sin(a) * r);
+    cl.userData.horizon = true;            // static: excluded from the drift loop
+    scene.add(cl);
   }
 }
 

@@ -1,5 +1,11 @@
 html, body { margin: 0; padding: 0; overflow: hidden; background: #0a2a4a; height: 100%; }
-canvas.webgl { display: block; }
+/* a gentle final grade: livelier color + a hair of contrast */
+canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
+/* vignette: darken the corners so the eye sits on the action. sits under the HUD */
+#grade { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+         mix-blend-mode: multiply;
+         background: radial-gradient(ellipse 78% 80% at 50% 46%,
+                     rgba(255,255,255,1) 52%, rgba(120,120,130,1) 86%, rgba(40,46,60,1) 100%); }
 .hud { position: fixed; color: #fff; font-family: "Consolas", "Courier New", monospace;
        text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; user-select: none; z-index: 10; }
 #cheats { left: 10px; top: 10px; font-size: 12px; line-height: 1.5;
