@@ -34,20 +34,47 @@ export function updateWeatherHost(dt: number) {
 /* ---- rain ---- */
 const rainGroup = new THREE.Group();
 scene.add(rainGroup);
-const RAIN_N = 140;
+const RAIN_N = 180;
 {
-  const geo = new THREE.BoxGeometry(0.015, 0.7, 0.015);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xbfd6e4, transparent: true, opacity: 0.45, depthWrite: false });
+  const geo = new THREE.BoxGeometry(0.02, 1.7, 0.02);     // long thin streaks
+  const mat = new THREE.MeshBasicMaterial({ color: 0xcfe2ee, transparent: true, opacity: 0.5, depthWrite: false });
   for (let i = 0; i < RAIN_N; i++) {
     const d = new THREE.Mesh(geo, mat);
     d.position.set((Math.random() - 0.5) * 44, Math.random() * 26, (Math.random() - 0.5) * 44);
+    d.rotation.z = 0.28;                                   // slanted by the wind
     d.userData.noShadow = true;
     rainGroup.add(d);
   }
 }
 
-/* ---- lightning ---- */
+/* ---- lightning: an exposure flash + a jagged bolt over the horizon ---- */
 let flash = 0, boltTimer = 8;
+const boltMat = new THREE.LineBasicMaterial({ color: 0xdceaff, transparent: true, opacity: 0, fog: false });
+const BOLT_SEG = 12;
+const boltGeo = new THREE.BufferGeometry();
+boltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BOLT_SEG * 3), 3));
+const bolt = new THREE.Line(boltGeo, boltMat);
+bolt.userData.noShadow = true;
+bolt.frustumCulled = false;
+bolt.visible = false;
+scene.add(bolt);
+function strikeBolt() {
+  const a = Math.random() * Math.PI * 2;
+  const dist = 360 + Math.random() * 180;
+  const bx = cam1.position.x + Math.sin(a) * dist;
+  const bz = cam1.position.z + Math.cos(a) * dist;
+  const top = 210 + Math.random() * 70;
+  const p = boltGeo.attributes.position.array as Float32Array;
+  for (let i = 0; i < BOLT_SEG; i++) {
+    const f = i / (BOLT_SEG - 1);                          // 0 high in the sky -> 1 at the sea
+    p[i * 3] = bx + (Math.random() - 0.5) * 26 * (1 - f);
+    p[i * 3 + 1] = top * (1 - f);
+    p[i * 3 + 2] = bz + (Math.random() - 0.5) * 26 * (1 - f);
+  }
+  boltGeo.attributes.position.needsUpdate = true;
+  boltGeo.computeBoundingSphere();
+  bolt.visible = true;
+}
 
 /* ---- color targets (fair = the PEAK/SoT palette, foul = the gloom) ---- */
 const skyZenithFair = new THREE.Color(0x2f86d6), skyZenithFoul = new THREE.Color(0x33414f);
@@ -112,9 +139,13 @@ export function updateWeatherVisuals(dt: number) {
     if (boltTimer <= 0) {
       boltTimer = 4 + Math.random() * 9;
       flash = 1;
+      strikeBolt();
       setTimeout(() => thunder(), 350 + Math.random() * 1400);
     }
   }
   flash *= Math.exp(-7 * dt);
   renderer.toneMappingExposure = 1.18 + flash * 1.4;
+  // the bolt blazes with the flash, then vanishes
+  boltMat.opacity = Math.min(1, flash * 1.6);
+  if (bolt.visible && flash < 0.04) bolt.visible = false;
 }

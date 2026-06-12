@@ -1,6 +1,6 @@
 import './style.css';
 import { BOATS, CONFIG } from './config';
-import { clamp, len2, v2, wrapPi } from './mathUtil';
+import { clamp, len2, rightVec, v2, wrapPi } from './mathUtil';
 import { boat, charActive, chars, env, game, layout, myChar, netRole, guestHere, owned, p1, p2, prefs, registerChars, session, splats, wind } from './state';
 import { keys, pressedQueue } from './input';
 import * as audio from './audio';
@@ -10,7 +10,7 @@ import { buildWorld, islandPos, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
 import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
-import { spawnDroplets, spawnWake, updateSplash, updateStreaks, updateWake } from './effects';
+import { spawnDroplets, spawnWake, updateBowWave, updateSplash, updateStreaks, updateWake } from './effects';
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
@@ -105,22 +105,41 @@ function physicsStep(dt: number) {
 }
 
 /* =========================== cosmetic step =========================== */
-let wakeTimer = 0, sprayTimer = 0;
+let wakeTimer = 0, sprayTimer = 0, bargeWakeTimer = 0;
 function visualStep(dt: number) {
   const t = session.simT;
   const speed = len2(boat.vel);
-  // wake trail off the stern + bow spray at speed
+  // churned wake lane off the stern + a diverging Kelvin V, plus a bow moustache
   wakeTimer -= dt;
   if (speed > 1.2 && wakeTimer <= 0) {
-    wakeTimer = 0.09;
+    wakeTimer = 0.07;
     const stern = localToWorld2(v2(0, -layout.hullL / 2));
-    spawnWake(stern.x, stern.z, boat.yaw, (1.2 + speed * 0.12) * layout.scale);
+    const r = rightVec(boat.yaw);
+    const beam = layout.hullW * 0.5;
+    // the foamy centre lane
+    spawnWake(stern.x, stern.z, boat.yaw, (1.0 + speed * 0.10) * layout.scale, 3.2, 0, 0, 0.5, 1.9);
+    // two side crests that drift outward as the boat passes
+    for (const s of [-1, 1]) {
+      spawnWake(stern.x + r.x * s * beam * 0.7, stern.z + r.z * s * beam * 0.7, boat.yaw,
+        0.8 * layout.scale, 2.6, r.x * s * 1.2, r.z * s * 1.2, 0.42, 1.2);
+    }
   }
+  const bow = localToWorld2(v2(0, layout.hullL / 2 - 0.3));
+  updateBowWave(bow.x, bow.z, boat.yaw, speed, t);
   sprayTimer -= dt;
   if (speed > 5.5 && sprayTimer <= 0) {
     sprayTimer = 0.13;
-    const bow = localToWorld2(v2(0, layout.hullL / 2 - 0.3));
     spawnDroplets(bow.x, bow.z, 3, 2.4, 2.6);
+  }
+  // the towed barge churns its own wake
+  if (owned.barge && prefs.barge) {
+    bargeWakeTimer -= dt;
+    const bspeed = Math.hypot(barge.vel.x, barge.vel.z);
+    if (bspeed > 1.0 && bargeWakeTimer <= 0) {
+      bargeWakeTimer = 0.1;
+      const bx = barge.pos.x - Math.sin(barge.yaw) * 1.8, bz = barge.pos.z - Math.cos(barge.yaw) * 1.8;
+      spawnWake(bx, bz, barge.yaw, 1.3, 2.4, 0, 0, 0.4, 1.3);
+    }
   }
   // sun (shadow box), sky dome, clouds and gulls follow the action.
   // the shadow box tracks the CAMERA so land shadows render ashore too
