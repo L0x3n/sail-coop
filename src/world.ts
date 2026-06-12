@@ -301,9 +301,82 @@ export function buildWorld() {
     scene.add(m);
   };
 
+  /* ---- island life: grassy clumps, flowers, shells, driftwood ----
+     the dense bits (grass/stems/flowers/shells) are instanced for cheap draws */
+  const grassMat = new THREE.MeshLambertMaterial({ color: 0x5aa84a, flatShading: true });
+  const bushMat = new THREE.MeshLambertMaterial({ color: 0x47974f, flatShading: true });
+  const stemMat = new THREE.MeshLambertMaterial({ color: 0x3f8f46 });
+  const driftMat = new THREE.MeshLambertMaterial({ color: 0xcabfa3, flatShading: true });
+  const flowerMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x222018, emissiveIntensity: 0.25 });
+  const shellMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const FLOWER_COLS = [0xff6b6b, 0xffd43b, 0xf783ac, 0xffffff, 0xda77f2, 0xff922b].map(c => new THREE.Color(c));
+  const SHELL_COLS = [0xffe3c2, 0xffd0d6, 0xf0e6ff, 0xfff0b3].map(c => new THREE.Color(c));
+  const bladeGeo = new THREE.ConeGeometry(0.05, 0.5, 4);
+  const bushGeo = new THREE.IcosahedronGeometry(0.6, 0);
+  const stemGeo = new THREE.CylinderGeometry(0.02, 0.025, 0.46, 4);
+  const headGeo = new THREE.SphereGeometry(0.11, 6, 5);
+  const shellGeo = new THREE.ConeGeometry(0.13, 0.1, 7);
+  interface Xf { x: number; y: number; z: number; rx: number; ry: number; rz: number; s: number; c?: number; }
+  const grassXf: Xf[] = [], stemXf: Xf[] = [], flowerXf: Xf[] = [], shellXf: Xf[] = [];
+  const scatterIsland = (cx: number, cz: number, r: number) => {
+    const clumps = Math.max(3, Math.round(r * 0.5));
+    for (let k = 0; k < clumps; k++) {
+      const a = Math.random() * TAU, rad = (0.32 + Math.random() * 0.52) * r;
+      const gx = cx + Math.cos(a) * rad, gz = cz + Math.sin(a) * rad;
+      for (let b = 0; b < 4; b++)
+        grassXf.push({ x: gx + (Math.random() - 0.5) * 0.8, y: 0.85, z: gz + (Math.random() - 0.5) * 0.8,
+          rx: (Math.random() - 0.5) * 0.3, ry: Math.random() * TAU, rz: (Math.random() - 0.5) * 0.3, s: 0.7 + Math.random() * 0.7 });
+      if (Math.random() < 0.6) {
+        const bush = new THREE.Mesh(bushGeo, bushMat);
+        bush.position.set(gx + (Math.random() - 0.5) * 1.2, 0.95, gz + (Math.random() - 0.5) * 1.2);
+        bush.scale.set(0.7 + Math.random() * 0.6, 0.5 + Math.random() * 0.3, 0.7 + Math.random() * 0.6);
+        bush.castShadow = true;
+        scene.add(bush);
+      }
+      const fn = 2 + ((Math.random() * 3) | 0);
+      for (let f = 0; f < fn; f++) {
+        const fx = gx + (Math.random() - 0.5) * 1.5, fz = gz + (Math.random() - 0.5) * 1.5;
+        stemXf.push({ x: fx, y: 0.83, z: fz, rx: 0, ry: 0, rz: (Math.random() - 0.5) * 0.2, s: 1 });
+        flowerXf.push({ x: fx, y: 1.08, z: fz, rx: 0, ry: Math.random() * TAU, rz: 0, s: 0.7 + Math.random() * 0.7, c: (Math.random() * FLOWER_COLS.length) | 0 });
+      }
+    }
+    const shoreN = Math.max(3, Math.round(r * 0.4));
+    for (let s = 0; s < shoreN; s++) {
+      const a = Math.random() * TAU, rad = (0.85 + Math.random() * 0.13) * r;
+      const sx = cx + Math.cos(a) * rad, sz = cz + Math.sin(a) * rad;
+      if (Math.random() < 0.22) {
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 1.4 + Math.random(), 7), driftMat);
+        log.position.set(sx, 0.5, sz);
+        log.rotation.set(Math.PI / 2, Math.random() * TAU, 0);
+        log.castShadow = true;
+        scene.add(log);
+      } else {
+        shellXf.push({ x: sx, y: 0.5, z: sz, rx: Math.random() * 0.5, ry: Math.random() * TAU, rz: Math.random() * 0.6, s: 0.7 + Math.random() * 0.6, c: (Math.random() * SHELL_COLS.length) | 0 });
+      }
+    }
+  };
+  const _dummy = new THREE.Object3D();
+  const buildInstanced = (geo: THREE.BufferGeometry, mat: THREE.Material, xf: Xf[], cols?: THREE.Color[]) => {
+    if (!xf.length) return;
+    const im = new THREE.InstancedMesh(geo, mat, xf.length);
+    im.castShadow = false; im.userData.noShadow = true;     // tiny things skip the shadow pass
+    xf.forEach((t, i) => {
+      _dummy.position.set(t.x, t.y, t.z);
+      _dummy.rotation.set(t.rx, t.ry, t.rz);
+      _dummy.scale.setScalar(t.s);
+      _dummy.updateMatrix();
+      im.setMatrixAt(i, _dummy.matrix);
+      if (cols && t.c !== undefined) im.setColorAt(i, cols[t.c]);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    scene.add(im);
+  };
+
   buildBeach(islandPos.x, islandPos.z, CONFIG.islandRadius, 1.7);
   buildMound(islandPos.x - 6, islandPos.z - 8, 24, 14, 1.7);
   buildMound(islandPos.x + 14, islandPos.z + 2, 14, 8.5, 4.2);
+  scatterIsland(islandPos.x, islandPos.z, CONFIG.islandRadius);
 
   // curvy palms with droopy two-tone fronds and coconuts
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0xa8743f });
@@ -346,6 +419,7 @@ export function buildWorld() {
   const rockMat = new THREE.MeshLambertMaterial({ color: 0x868e96, flatShading: true });
   for (const isle of EXTRA_ISLES) {
     buildBeach(isle.x, isle.z, isle.r, isle.x * 0.1 + 2);
+    if (isle.palms > 0) scatterIsland(isle.x, isle.z, isle.r);
     if (isle.hill) {
       buildMound(isle.x - 2, isle.z - 2, isle.r * 0.6, isle.r * 0.45, isle.x * 0.1);
     }
@@ -365,10 +439,45 @@ export function buildWorld() {
     obstacles.push({ x: isle.x, z: isle.z, r: isle.r + 2.5 });
   }
 
+  // bake the scattered island life into instanced meshes (4 draw calls for all of it)
+  buildInstanced(bladeGeo, grassMat, grassXf);
+  buildInstanced(stemGeo, stemMat, stemXf);
+  buildInstanced(headGeo, flowerMat, flowerXf, FLOWER_COLS);
+  buildInstanced(shellGeo, shellMat, shellXf, SHELL_COLS);
+
+  // ---- the home lighthouse: a landmark on the approach ----
+  {
+    const lh = new THREE.Group();
+    const white = new THREE.MeshLambertMaterial({ color: 0xf3f3ef });
+    const red = new THREE.MeshLambertMaterial({ color: 0xd13b3b });
+    const H = 12;
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.7, H, 16), white);
+    tower.position.y = H / 2; tower.castShadow = true; tower.receiveShadow = true;
+    lh.add(tower);
+    for (const hf of [0.18, 0.5, 0.82]) {                  // red barber-pole bands hug the taper
+      const rr = 1.7 + (1.05 - 1.7) * hf;
+      const band = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.12, 8, 18), red);
+      band.position.y = H * hf; band.rotation.x = Math.PI / 2;
+      lh.add(band);
+    }
+    const gallery = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 0.3, 16), red);
+    gallery.position.y = H + 0.15; lh.add(gallery);
+    const lampRoom = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 1.5, 12),
+      new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffcf6a, emissiveIntensity: 1.3 }));
+    lampRoom.position.y = H + 1.05; lampRoom.userData.noShadow = true; lh.add(lampRoom);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.25, 1.2, 12), red);
+    roof.position.y = H + 2.4; lh.add(roof);
+    const beacon = new THREE.PointLight(0xffd27a, 1.4, 60, 1.6);
+    beacon.position.y = H + 1.05; beacon.userData.noShadow = true; lh.add(beacon);
+    lh.position.set(islandPos.x - 1, 0.7, islandPos.z + 13);
+    scene.add(lh);
+  }
+
   // piers with plank decks (home + delivery)
   const woodDark = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
   const capMat = new THREE.MeshLambertMaterial({ color: 0xf1f3f5 });
-  const buildPier = (a: { x: number; z: number }, b: { x: number; z: number }) => {
+  const lanternMat = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffb84d, emissiveIntensity: 1.2 });
+  const buildPier = (a: { x: number; z: number }, b: { x: number; z: number }, withLight = false) => {
     const tex = makePlankTexture('#8a5a33', '#5d3a20');
     const dx = b.x - a.x, dz = b.z - a.z;
     const len = Math.hypot(dx, dz);
@@ -392,12 +501,31 @@ export function buildWorld() {
         scene.add(cap);
       }
     }
+    // a hanging lantern at the seaward end (a warm glow over the mooring)
+    const lpost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.075, 1.5, 6), woodDark);
+    lpost.position.set(b.x, 1.75, b.z);
+    scene.add(lpost);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), woodDark);
+    arm.position.set(b.x, 2.45, b.z);
+    scene.add(arm);
+    const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.3), lanternMat);
+    lantern.position.set(b.x, 2.2, b.z);
+    lantern.userData.noShadow = true;
+    scene.add(lantern);
+    void withLight;   // lanterns glow via emissive; the only cast light is the lighthouse beacon
   };
   buildPier(pierA, pierB);
   buildPier(destA, destB);
   buildPier(sandA, sandB);
   buildPier(skerA, skerB);
   buildPier(tinyA, tinyB);
+  // dock dressing: a couple of coiled mooring ropes on the home pier
+  for (const [rx, rz] of [[pierA.x - 1.3, pierB.z - 3], [pierA.x + 1.3, pierB.z - 6.5]] as const) {
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 6, 14), woodDark);
+    coil.position.set(rx, 1.16, rz);
+    coil.rotation.x = Math.PI / 2;
+    scene.add(coil);
+  }
 
   // the delivery spot: painted circle + flag + bobbing arrow (moves with the route)
   delMat = new THREE.Mesh(new THREE.CircleGeometry(DELIVERY.r - 0.6, 20),
