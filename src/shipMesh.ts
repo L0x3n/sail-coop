@@ -41,6 +41,8 @@ export let boomGroup: THREE.Group;
 export let wheelGroup: THREE.Group;
 export let cannonGroup: THREE.Group; // swivels with the aim (cannon.ts drives it)
 export let cannonPivot: THREE.Group; // barrel elevation
+/* the stern lantern's light — daynight toggles it on at dusk (rebuilt with the ship) */
+export const shipLights: { stern: THREE.PointLight | null } = { stern: null };
 let rudderGroup: THREE.Group;
 let sailGeo: THREE.PlaneGeometry;
 let sailBase: Float32Array;
@@ -221,6 +223,12 @@ export function buildShip(S: number) {
     lamp.position.set(0, DECK_Y + 1.05, -3.95 * S);
     lamp.userData.noShadow = true;
     R.add(lamp);
+    const sternLight = new THREE.PointLight(0xffb24d, 0, 18, 2.0);
+    sternLight.position.set(0, DECK_Y + 1.2, -3.7 * S);
+    sternLight.userData.noShadow = true;
+    sternLight.visible = false;            // off by day (skips lighting cost); daynight lights it at dusk
+    R.add(sternLight);
+    shipLights.stern = sternLight;
     for (const [bx, bz] of [[-1.02, -3.25], [-0.72, -3.5]] as const) {
       const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.68, 10), woodMat);
       barrel.position.set(bx * S, DECK_Y + 0.34, bz * S);

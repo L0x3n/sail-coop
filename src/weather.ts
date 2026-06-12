@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { lerp, smoothstep } from './mathUtil';
 import { boat, env, netRole } from './state';
-import { SKY, cam1, hemi, renderer, scene, skyDome, sun } from './scene';
-import { fancyUniforms, setSwell, waterMode } from './water';
+import { cam1, renderer, scene, sun } from './scene';
+import { setSwell, waterMode } from './water';
 import { islandPos } from './world';
 import { thunder } from './audio';
 import { toast } from './hud';
@@ -76,15 +76,10 @@ function strikeBolt() {
   bolt.visible = true;
 }
 
-/* ---- color targets (fair = the PEAK/SoT palette, foul = the gloom) ---- */
-const skyZenithFair = new THREE.Color(0x2f86d6), skyZenithFoul = new THREE.Color(0x33414f);
-const skyMidFair = new THREE.Color(0x8ecaee), skyMidFoul = new THREE.Color(0x5d6e7a);
-const skyHorizonFair = new THREE.Color(SKY), skyHorizonFoul = new THREE.Color(0x84939e);
-const deepFair = new THREE.Color(0x0a3f5c), deepFoul = new THREE.Color(0x0e2b38);
-const shallowFair = new THREE.Color(0x1d8f8a), shallowFoul = new THREE.Color(0x3a6878);
-const sssFair = new THREE.Color(0x46e3b5), sssFoul = new THREE.Color(0x4e7d74);
-const _c = new THREE.Color();
-const skyU = (skyDome.material as THREE.ShaderMaterial).uniforms;
+/* the whole palette (sky/water/sun/fog) now lives in daynight.ts, which lerps
+   the time-of-day keyframes and then darkens them by env.darkness. weather just
+   sets that darkness + the wind/swell, and lays rain + lightning on top. */
+export function getFlash() { return flash; }
 
 export function updateWeatherVisuals(dt: number) {
   const W = WEATHERS[env.weatherId];
@@ -101,21 +96,6 @@ export function updateWeatherVisuals(dt: number) {
   const openSea = 1 + 0.45 * smoothstep(95, 180, distIsland);
   env.swell = smSwell * openSea * (waterMode === 2 ? 1.5 : 1);
   setSwell(env.swell);
-
-  // light + colors slide toward the gloom
-  const d = smDark;
-  sun.intensity = lerp(1.5, 0.55, d) + flash * 2.2;
-  hemi.intensity = lerp(1.0, 0.5, d);
-  (skyU.uZenith.value as THREE.Color).lerpColors(skyZenithFair, skyZenithFoul, d);
-  (skyU.uMid.value as THREE.Color).lerpColors(skyMidFair, skyMidFoul, d);
-  (skyU.uHorizon.value as THREE.Color).lerpColors(skyHorizonFair, skyHorizonFoul, d);
-  _c.lerpColors(skyHorizonFair, skyHorizonFoul, d);
-  (scene.fog as THREE.Fog).color.copy(_c);
-  (scene.background as THREE.Color).copy(_c);
-  (fancyUniforms.uSky.value as THREE.Color).copy(_c);
-  (fancyUniforms.uDeep.value as THREE.Color).lerpColors(deepFair, deepFoul, d);
-  (fancyUniforms.uShallow.value as THREE.Color).lerpColors(shallowFair, shallowFoul, d);
-  (fancyUniforms.uSss.value as THREE.Color).lerpColors(sssFair, sssFoul, d);
 
   // rain follows the camera, drifts with the wind
   const raining = smDark > 0.62;
@@ -144,7 +124,9 @@ export function updateWeatherVisuals(dt: number) {
     }
   }
   flash *= Math.exp(-7 * dt);
-  renderer.toneMappingExposure = 1.18 + flash * 1.4;
+  // ride the lightning ON TOP of the day-night base (daynight set these this frame)
+  sun.intensity += flash * 2.2;
+  renderer.toneMappingExposure += flash * 1.4;
   // the bolt blazes with the flash, then vanishes
   boltMat.opacity = Math.min(1, flash * 1.6);
   if (bolt.visible && flash < 0.04) bolt.visible = false;

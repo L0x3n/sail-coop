@@ -45,17 +45,18 @@ export const skyDome = new THREE.Mesh(
       uMid: { value: new THREE.Color(0x8ecaee) },
       uHorizon: { value: new THREE.Color(SKY) },
       uSun: { value: sun.position.clone().normalize() },
+      uGlow: { value: 1 },          // sun-disc glow strength (faded out at night)
     },
     vertexShader: `varying vec3 vDir;
       void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `uniform vec3 uZenith,uMid,uHorizon,uSun; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uZenith,uMid,uHorizon,uSun; uniform float uGlow; varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
         float h = clamp(d.y, 0.0, 1.0);
         vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.16, h));
         col = mix(col, uZenith, smoothstep(0.16, 0.62, h));
         float s = max(dot(d, normalize(uSun)), 0.0);
-        col += vec3(1.0, 0.9, 0.66) * (pow(s, 900.0) * 1.2 + pow(s, 14.0) * 0.16);
+        col += vec3(1.0, 0.9, 0.66) * (pow(s, 900.0) * 1.2 + pow(s, 14.0) * 0.16) * uGlow;
         gl_FragColor = vec4(col, 1.0);
       }`,
   }));

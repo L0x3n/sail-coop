@@ -15,6 +15,7 @@ import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
+import { daynight, updateDayNight } from './daynight';
 import { director, updateDirector } from './director';
 import { bomberPos, clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
@@ -109,6 +110,7 @@ let wakeTimer = 0, sprayTimer = 0, bargeWakeTimer = 0;
 function visualStep(dt: number) {
   const t = session.simT;
   const speed = len2(boat.vel);
+  updateDayNight(dt);                  // advance the day, repaint sky/water/sun before anything reads them
   // churned wake lane off the stern + a diverging Kelvin V, plus a bow moustache
   wakeTimer -= dt;
   if (speed > 1.2 && wakeTimer <= 0) {
@@ -142,8 +144,9 @@ function visualStep(dt: number) {
     }
   }
   // sun (shadow box), sky dome, clouds and gulls follow the action.
-  // the shadow box tracks the CAMERA so land shadows render ashore too
-  sun.position.set(cam1.position.x + 80, 120, cam1.position.z + 40);
+  // the light rides the day-night arc; the shadow box tracks the CAMERA
+  const D = daynight.dir;
+  sun.position.set(cam1.position.x + D.x * 140, 20 + D.y * 150, cam1.position.z + D.z * 140);
   sun.target.position.set(cam1.position.x, 0, cam1.position.z);
   skyDome.position.copy(cam1.position);
   for (const cl of clouds) {
@@ -233,7 +236,7 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS, mops, crates, splats, game, cannon, barge, gulls,
+  env, layout, BOATS, mops, crates, splats, game, cannon, barge, gulls, daynight,
   _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
   _cannon: { fireCannon, balls, bomberPos },
   _shop: { tryBuy, equipBarge },
@@ -265,4 +268,5 @@ window.__sail = {
   },
   render() { drawHud(session.simT); drawMap(); renderViews(); },
   setPaused(p: boolean) { window.__sailPaused = p; },
+  setTime(v: number) { daynight.t = ((v % 1) + 1) % 1; },
 };
