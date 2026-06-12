@@ -90,6 +90,45 @@ export function makeSeaFoamTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/* tiling caustic web: thin bright light-lines on black, additive on the seabed */
+export function makeCausticTexture(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 256, 256);
+  g.lineCap = 'round';
+  const nodes: { x: number; y: number }[] = [];
+  for (let i = 0; i < 24; i++) nodes.push({ x: Math.random() * 256, y: Math.random() * 256 });
+  // wrap 3x3 so the web tiles seamlessly
+  for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+    for (const nd of nodes) {
+      const x = nd.x + ox * 256, y = nd.y + oy * 256;
+      if (x < -50 || x > 306 || y < -50 || y > 306) continue;
+      const arms = 3 + ((Math.random() * 3) | 0);
+      for (let k = 0; k < arms; k++) {
+        const a = Math.random() * Math.PI * 2, len = 14 + Math.random() * 30;
+        g.strokeStyle = 'rgba(255,255,255,' + (0.14 + Math.random() * 0.2).toFixed(2) + ')';
+        g.lineWidth = 1 + Math.random() * 1.6;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.quadraticCurveTo(
+          x + Math.cos(a) * len * 0.5 + (Math.random() - 0.5) * 10,
+          y + Math.sin(a) * len * 0.5 + (Math.random() - 0.5) * 10,
+          x + Math.cos(a) * len, y + Math.sin(a) * len);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.beginPath();
+      g.arc(x, y, 1.3 + Math.random() * 1.4, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 export function makeFoamSprite(): THREE.CanvasTexture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 64;

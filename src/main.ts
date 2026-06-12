@@ -6,7 +6,7 @@ import { keys, pressedQueue } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
 import { fancyUniforms, fancyWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
-import { buildWorld, islandPos } from './world';
+import { buildWorld, islandPos, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
 import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
@@ -149,6 +149,7 @@ function visualStep(dt: number) {
   updateSplash(dt);
   updateStreaks(dt, t, boat.pos.x, boat.pos.z, wind.angle, wind.strength);
   updateWater(t, boat.pos.x, boat.pos.z);
+  updateShores(t);
   updateWeatherVisuals(dt);
   updateCritters(dt, t);
   updateMopVisual(t);

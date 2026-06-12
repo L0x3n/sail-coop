@@ -3,7 +3,7 @@ import { CONFIG } from './config';
 import { TAU, v2 } from './mathUtil';
 import { scene } from './scene';
 import { owned } from './state';
-import { makePlankTexture } from './textures';
+import { makeCausticTexture, makePlankTexture, makeSeaFoamTexture } from './textures';
 
 /* =========================== world: island, pier, rocks =========================== */
 export const islandPos = v2(0, -CONFIG.islandDist);   // upwind of spawn (wind blows +z at start)
@@ -93,6 +93,76 @@ export const SHALLOWS = [
   ...EXTRA_ISLES.map(i => ({ x: i.x, z: i.z, r: i.r })),
 ];
 
+/* ---- animated shore: breaking foam at the waterline + caustics on the shelf ---- */
+const shoreFoamMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uFoam: { value: makeSeaFoamTexture() } },
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  vertexShader: `
+    attribute float aShore; varying float vShore; varying vec2 vWorld;
+    void main() {
+      vShore = aShore;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorld = wp.xz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: `
+    uniform float uTime; uniform sampler2D uFoam;
+    varying float vShore; varying vec2 vWorld;
+    void main() {
+      float l1 = texture2D(uFoam, vWorld * 0.05  + vec2(uTime * 0.013, -uTime * 0.009)).r;
+      float l2 = texture2D(uFoam, vWorld * 0.026 - vec2(uTime * 0.007,  uTime * 0.011)).r;
+      float lace = l1 * 0.6 + l2 * 0.55;
+      float breath = sin(uTime * 0.5 + vShore * 0.2) * 1.3;   // the waterline laps in and out
+      float d = vShore - breath;                              // signed dist from the breaking line
+      // foam peaks at the line, washes up the beach (d<0), thins out into the water (d>0)
+      float band = smoothstep(3.0, 0.0, d) * smoothstep(-1.8, 0.2, d);
+      float a = clamp(band * (0.30 + 0.8 * lace), 0.0, 1.0);
+      if (a < 0.03) discard;
+      gl_FragColor = vec4(vec3(0.95, 0.99, 1.0), a);
+    }`,
+});
+const causticTex = makeCausticTexture();
+const causticLayers: { mat: THREE.MeshBasicMaterial; sx: number; sz: number; ph: number }[] = [];
+/* drive the foam shader clock + scroll/shimmer the caustics (called each frame) */
+export function updateShores(t: number) {
+  shoreFoamMat.uniforms.uTime.value = t;
+  for (const c of causticLayers) {
+    if (c.mat.map) c.mat.map.offset.set((t * c.sx) % 1, (t * c.sz) % 1);
+    c.mat.opacity = 0.24 + 0.14 * Math.sin(t * 0.7 + c.ph);
+  }
+}
+function buildShoreFoam(cx: number, cz: number, shoreR: number) {
+  const geo = new THREE.RingGeometry(shoreR - 4, shoreR + 6, 56, 2);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const aShore = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) aShore[i] = Math.hypot(pos.getX(i), pos.getZ(i)) - shoreR;
+  geo.setAttribute('aShore', new THREE.BufferAttribute(aShore, 1));
+  const foam = new THREE.Mesh(geo, shoreFoamMat);
+  foam.position.set(cx, 0.08, cz);
+  foam.userData.noShadow = true;
+  foam.renderOrder = 2;
+  scene.add(foam);
+}
+function buildCaustics(cx: number, cz: number, r: number) {
+  for (let L = 0; L < 2; L++) {
+    const map = causticTex.clone();
+    map.needsUpdate = true;
+    const rep = (2 * (r + 11)) / 13;
+    map.repeat.set(rep, rep);
+    const mat = new THREE.MeshBasicMaterial({
+      map, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r + 11, 40), mat);
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(cx, -1.08 + L * 0.04, cz);
+    disc.userData.noShadow = true;
+    disc.renderOrder = -1;                  // under the transparent water, over the shelf
+    scene.add(disc);
+    causticLayers.push({ mat, sx: L ? 0.010 : -0.013, sz: L ? -0.008 : 0.011, ph: L * 2.1 + cx * 0.05 });
+  }
+}
+
 export function buildWorld() {
   /* ---- the sea floor: pitch-dark deeps, bright sandy shallows near shore ---- */
   {
@@ -155,6 +225,9 @@ export function buildWorld() {
           scene.add(peb);
         }
       }
+      // breaking foam at the waterline + caustics dancing on the bright shelf
+      buildShoreFoam(sh.x, sh.z, sh.r + 0.8);
+      buildCaustics(sh.x, sh.z, sh.r);
     }
   }
 
@@ -195,9 +268,40 @@ export function buildWorld() {
     scene.add(m);
   };
 
-  const sandMat = new THREE.MeshLambertMaterial({ color: 0xf0dca4 });
-  const sand = new THREE.Mesh(new THREE.CylinderGeometry(CONFIG.islandRadius, CONFIG.islandRadius + 6, 3, 28), sandMat);
-  sand.position.set(islandPos.x, 0.4, islandPos.z); scene.add(sand);
+  /* beaches: irregular displaced sand discs, dry on top, damp-darkening to the waterline */
+  const beachMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const cBeachDry = new THREE.Color(0xf0dca4), cBeachWet = new THREE.Color(0xcaa96f), cBeachDeep = new THREE.Color(0xb1925d);
+  const buildBeach = (cx: number, cz: number, r: number, seed: number) => {
+    const H = 2.6, beachY = -0.7;
+    const geo = new THREE.CylinderGeometry(r, r + 3, H, 44, 1, false).toNonIndexed();
+    const p = geo.attributes.position.array as Float32Array;
+    for (let i = 0; i < p.length; i += 3) {
+      const rad = Math.hypot(p[i], p[i + 2]);
+      if (rad > 0.5) {                                       // leave the cap centres put
+        const a = Math.atan2(p[i], p[i + 2]);
+        const n = Math.sin(a * 3 + seed) * 0.5 + Math.sin(a * 6 + seed * 2) * 0.3 + Math.sin(a * 11 + seed) * 0.2;
+        const f = 1 + n * 0.1;
+        p[i] *= f; p[i + 2] *= f;
+      }
+    }
+    geo.computeVertexNormals();
+    const col = new Float32Array(p.length);
+    const c = new THREE.Color();
+    for (let i = 0; i < p.length; i += 3) {
+      const wy = p[i + 1] + beachY;                          // world height of this vertex
+      if (wy > 0.35) c.copy(cBeachDry);
+      else if (wy > -0.4) c.copy(cBeachDry).lerp(cBeachWet, (0.35 - wy) / 0.75);
+      else c.copy(cBeachWet).lerp(cBeachDeep, Math.min(1, (-0.4 - wy) / 1.2));
+      col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const m = new THREE.Mesh(geo, beachMat);
+    m.position.set(cx, beachY, cz);
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+
+  buildBeach(islandPos.x, islandPos.z, CONFIG.islandRadius, 1.7);
   buildMound(islandPos.x - 6, islandPos.z - 8, 24, 14, 1.7);
   buildMound(islandPos.x + 14, islandPos.z + 2, 14, 8.5, 4.2);
 
@@ -241,9 +345,7 @@ export function buildWorld() {
   // the smaller isles
   const rockMat = new THREE.MeshLambertMaterial({ color: 0x868e96, flatShading: true });
   for (const isle of EXTRA_ISLES) {
-    const sandIsle = new THREE.Mesh(new THREE.CylinderGeometry(isle.r, isle.r + 4, 2.4, 20), sandMat);
-    sandIsle.position.set(isle.x, 0.3, isle.z);
-    scene.add(sandIsle);
+    buildBeach(isle.x, isle.z, isle.r, isle.x * 0.1 + 2);
     if (isle.hill) {
       buildMound(isle.x - 2, isle.z - 2, isle.r * 0.6, isle.r * 0.45, isle.x * 0.1);
     }
