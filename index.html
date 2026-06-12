@@ -17,7 +17,8 @@
 <div id="topbar" class="hud">
   <div class="col"><canvas id="compass" width="90" height="90"></canvas><div id="windtxt">Wind</div></div>
   <div class="col"><div class="big" id="speed">0.0</div><div>speed</div><div class="big" id="timer">0:00</div></div>
-  <div class="col"><canvas id="miniboat" width="110" height="110"></canvas><div id="piertxt">trim / rudder</div></div>
+  <div class="col"><div class="big" id="gold">0g</div><div id="cargoTxt">cargo</div></div>
+  <div class="col"><canvas id="miniboat" width="110" height="110"></canvas><div id="piertxt">deliver</div></div>
 </div>
 <div id="msg" class="hud">
   <h1 id="msgTitle">DOCKED!</h1>
@@ -38,11 +39,6 @@
   <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
     tack upwind, dock at the island pier.<br>
     Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
-  <div class="boatrow">
-    <button class="boatcard" data-boat="skiff"><b>Skiff</b><span>tiny &amp; nimble<br>tips like a coin</span></button>
-    <button class="boatcard sel" data-boat="sloop"><b>Sloop</b><span>the trusty<br>all-rounder</span></button>
-    <button class="boatcard" data-boat="galleon"><b>Galleon</b><span>huge &amp; stately<br>turns next week</span></button>
-  </div>
   <button id="btnSolo">Solo — singlehand her</button>
   <button id="btnHost">Host online co-op</button>
   <div class="joinrow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a matey</button></div>

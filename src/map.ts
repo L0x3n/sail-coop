@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { TAU } from './mathUtil';
 import { boat, chars, charActive, env, wind } from './state';
-import { EXTRA_ISLES, islandPos, pierA, pierB } from './world';
+import { DELIVERY, EXTRA_ISLES, destA, destB, islandPos, pierA, pierB } from './world';
 import { WEATHERS } from './weather';
 
 /* =========================== big map (M) =========================== */
@@ -51,16 +51,22 @@ export function drawMap() {
       ctx.beginPath(); ctx.arc(mx(isle.x), my(isle.z), rr * 0.5, 0, TAU); ctx.fill();
     }
   }
-  // pier + dock zones
+  // home pier
   ctx.fillStyle = '#8a5a33';
   ctx.fillRect(mx(pierA.x) - 3, my(pierB.z), 6, my(pierA.z) - my(pierB.z));
-  ctx.fillStyle = 'rgba(105,219,124,.35)';
-  ctx.fillRect(mx(pierA.x) - 14, my(pierB.z), 11, my(pierA.z) - my(pierB.z));
-  ctx.fillRect(mx(pierA.x) + 3, my(pierB.z), 11, my(pierA.z) - my(pierB.z));
-  ctx.fillStyle = '#aef7a2';
+  ctx.fillStyle = '#cfeefc';
   ctx.font = 'bold 12px Consolas';
   ctx.textAlign = 'center';
-  ctx.fillText('DOCK HERE', mx(pierA.x), my(pierB.z) - 8);
+  ctx.fillText('HOME', mx(pierA.x), my(pierB.z) - 8);
+  // delivery pier + flag
+  ctx.fillStyle = '#8a5a33';
+  ctx.fillRect(mx(destB.x), my(destA.z) - 3, mx(destA.x) - mx(destB.x), 6);
+  ctx.fillStyle = '#69db7c';
+  ctx.beginPath();
+  ctx.arc(mx(DELIVERY.x), my(DELIVERY.z), 7, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#aef7a2';
+  ctx.fillText('DELIVER', mx(DELIVERY.x), my(DELIVERY.z) - 12);
   // rocks
   ctx.fillStyle = '#9aa3ab';
   for (const r of [{ x: -19, z: -62, r: 4 }, { x: 23, z: -118, r: 5 }, { x: -10, z: -168, r: 3.5 }, { x: 26, z: -205, r: 4.5 }]) {

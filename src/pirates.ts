@@ -233,6 +233,11 @@ export function animateChar(c: Char, dt: number, t: number) {
       tArmRX = -0.55;
       tArmRZ = -0.32;
     }
+    if (c.carry >= 0) {                          // hugging a crate, leaning back a bit
+      tArmLX = -1.25; tArmRX = -1.25;
+      tArmLZ = 0.4; tArmRZ = -0.4;
+      tTorsoX -= 0.1;
+    }
   }
 
   /* run the springs */

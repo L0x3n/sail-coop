@@ -1,9 +1,9 @@
 import { CONFIG } from './config';
-import { D2R, R2D, clamp, dot2, headVec, lerp, len2, rightVec, smoothstep, wrapPi, fmtTime } from './mathUtil';
+import { D2R, R2D, clamp, dot2, headVec, lerp, len2, rightVec, smoothstep, wrapPi } from './mathUtil';
 import { boat, charActive, chars, env, layout, session, tuning, wind } from './state';
-import { obstacles, pierA, pierB, dockMidZ, dockHalfLen } from './world';
+import { PIERS, obstacles } from './world';
 import { releaseStation } from './simChars';
-import { showDocked, toast } from './hud';
+import { toast } from './hud';
 
 /* =========================== wind =========================== */
 export function updateWind(dt: number, t: number) {
@@ -35,6 +35,7 @@ export function updateBoat(dt: number) {
   // coasts to a stop instead of sailing away from swimming players forever
   const crewAboard = chars.some(c => charActive(c) && c.mode === 'deck');
   if (!crewAboard) boat.sailForce = 0;
+  if (boat.anchored) boat.sailForce = 0;     // sheet eased while at anchor
   boat.luffing = boat.sailForce < 0.35;
 
   // decompose velocity
@@ -64,25 +65,38 @@ export function updateBoat(dt: number) {
   boat.angVel += angAcc * dt;
   boat.yaw = wrapPi(boat.yaw + boat.angVel * dt);
 
+  // the anchor bites hard: way comes off fast, drift dies
+  if (boat.anchored) {
+    const k = Math.exp(-2.8 * dt);
+    boat.vel.x *= k;
+    boat.vel.z *= k;
+    boat.angVel *= Math.exp(-2.2 * dt);
+  }
+
   boat.pos.x += boat.vel.x * dt;
   boat.pos.z += boat.vel.z * dt;
 
   // heel: crosswind power + turning lean, eased toward target
-  const speed = len2(boat.vel);
   const heelTarget = clamp(
     Math.sign(d || 1) * tuning.maxHeel * (wind.strength / CONFIG.windStrength) * trim * noGoF * Math.abs(Math.sin(d))
     + boat.angVel * vf * CONFIG.turnHeel * 0.1, -0.4, 0.4);
   boat.heel = lerp(boat.heel, heelTarget, clamp(CONFIG.heelLerp * dt, 0, 1));
 
   collideBoat();
-  updateDocking(dt, speed);
 }
 
 /* ============== obstacle collisions: bounce, shake, knockdown ============== */
 function collideBoat() {
   const all = obstacles.slice();
-  // pier as a line of circles
-  for (let z = pierA.z; z <= pierB.z; z += 3) all.push({ x: pierA.x, z, r: 4.0 });
+  // every pier is a line of collision circles
+  for (const p of PIERS) {
+    const dx = p.b.x - p.a.x, dz = p.b.z - p.a.z;
+    const len = Math.hypot(dx, dz);
+    const n = Math.ceil(len / 3);
+    for (let i = 0; i <= n; i++) {
+      all.push({ x: p.a.x + dx * (i / n), z: p.a.z + dz * (i / n), r: 4.0 });
+    }
+  }
   const hullPad = (layout.scale - 1) * 1.6;            // bigger boats touch sooner
   for (const o of all) {
     const dx = boat.pos.x - o.x, dz = boat.pos.z - o.z;
@@ -115,16 +129,5 @@ function collideBoat() {
   }
 }
 
-/* =========================== docking =========================== */
-function updateDocking(dt: number, speed: number) {
-  if (session.docked) return;
-  const inZone = Math.abs(boat.pos.z - dockMidZ) < dockHalfLen
-    && Math.abs(boat.pos.x - pierA.x) > 3.4 && Math.abs(boat.pos.x - pierA.x) < 9.5;
-  if (inZone && speed < CONFIG.dockSpeed) {
-    session.dockTimer += dt;
-    if (session.dockTimer >= CONFIG.dockHold) {
-      session.docked = true;
-      showDocked(fmtTime(session.runTime));
-    }
-  } else session.dockTimer = 0;
-}
+/* (the old docking win-state is gone — you anchor wherever you like and
+   the round is about carrying cargo into the delivery area) */

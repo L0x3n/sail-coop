@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
-import { charActive, chars, layout, netDrag, p1 } from './state';
+import { boat, charActive, chars, layout, netDrag, p1 } from './state';
 import { heelGroup } from './shipMesh';
-import { charAxes, localToWorld2, releaseStation, tryToggleStation } from './simChars';
+import { scene } from './scene';
+import { charAxes, localToWorld2, nearestStation, onWalkway, releaseStation, tryToggleStation, worldToLocal2 } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
+import { nearestCrateFor, pickUp, putDown } from './cargo';
+import { DELIVERY, WALKWAYS } from './world';
 import { spawnSplash } from './effects';
 import { localDrag } from './input';
 import { toast } from './hud';
@@ -128,25 +131,168 @@ function respawnMop(m: Mop, splashWorld: boolean) {
   m.z = m.bucket.position.z;
 }
 
-/* --- E: pick up / put down the mop, otherwise stations --- */
+/* ===================================================================
+   E = universal interact. getInteract is the SINGLE source of truth:
+   the HUD prompts from it, pressE executes it (host-side).
+   =================================================================== */
+export type InteractKind =
+  | 'crate-put' | 'crate-deliver' | 'crate-take' | 'crate-fish'
+  | 'mop-put' | 'mop-scrub' | 'mop-take'
+  | 'anchor' | 'ashore' | 'aboard'
+  | 'station' | 'station-leave' | 'grab-hint';
+
+function nearestWalkwayPoint(wx: number, wz: number): { x: number; z: number; d: number } {
+  let best = { x: 0, z: 0, d: 1e9 };
+  for (const w of WALKWAYS) {
+    const x = clamp(wx, w.x0 + 0.25, w.x1 - 0.25);
+    const z = clamp(wz, w.z0 + 0.25, w.z1 - 0.25);
+    const d = Math.hypot(x - wx, z - wz);
+    if (d < best.d) best = { x, z, d };
+  }
+  return best;
+}
+const anchorSpot = () => ({ x: 0, z: layout.deckZ * 0.88 });
+
+export function getInteract(c: Char): { kind: InteractKind; label: string } | null {
+  if (c.grabbedBy >= 0 || c.mode === 'water' || c.knock > 0) return null;
+  // carrying a crate: deliver > board/disembark WITH it > put down
+  if (c.carry >= 0) {
+    if (c.mode === 'shore') {
+      const f = headVec(c.facing);
+      if (Math.hypot(c.pos.x + f.x * 0.65 - DELIVERY.x, c.pos.z + f.z * 0.65 - DELIVERY.z) < DELIVERY.r) {
+        return { kind: 'crate-deliver', label: 'E — DELIVER the crate!' };
+      }
+      if (Math.hypot(c.pos.x - boat.pos.x, c.pos.z - boat.pos.z) < layout.hullL / 2 + 2.6) {
+        return { kind: 'aboard', label: 'E — climb aboard with the crate' };
+      }
+    }
+    if (c.mode === 'deck') {
+      const w = localToWorld2(c.pos);
+      if (nearestWalkwayPoint(w.x, w.z).d < 3.2) {
+        return { kind: 'ashore', label: 'E — step ashore with the crate' };
+      }
+    }
+    return { kind: 'crate-put', label: 'E — put the crate down (F: toss)' };
+  }
+  if (c.station) return { kind: 'station-leave', label: 'E — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL') };
+  // holding the mop
+  if (mopOf(c)) {
+    if (c.mode === 'deck' && nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) {
+      return { kind: 'mop-scrub', label: 'Hold LMB — scrub the poop!' };
+    }
+    return { kind: 'mop-put', label: 'E — put the mop down' };
+  }
+  // pick something up: crates first, then the mop
+  const nc = nearestCrateFor(c);
+  if (nc) return nc.fish
+    ? { kind: 'crate-fish', label: 'E — fish the crate out!' }
+    : { kind: 'crate-take', label: 'E — pick up the crate' };
+  if (c.mode === 'deck' && !c.holding && nearestFreeMop(c, CONFIG.mopPickupR)) {
+    return { kind: 'mop-take', label: 'E — pick up the mop' };
+  }
+  // the anchor windlass at the bow
+  if (c.mode === 'deck') {
+    const a = anchorSpot();
+    if (Math.hypot(c.pos.x - a.x, c.pos.z - a.z) < 1.7) {
+      return { kind: 'anchor', label: boat.anchored ? 'E — raise the anchor' : 'E — drop the anchor' };
+    }
+  }
+  // step ashore / climb aboard
+  if (c.mode === 'deck') {
+    const w = localToWorld2(c.pos);
+    if (nearestWalkwayPoint(w.x, w.z).d < 3.2) return { kind: 'ashore', label: 'E — step ashore' };
+  } else if (c.mode === 'shore') {
+    if (Math.hypot(c.pos.x - boat.pos.x, c.pos.z - boat.pos.z) < layout.hullL / 2 + 2.6) {
+      return { kind: 'aboard', label: 'E — climb aboard' };
+    }
+  }
+  // stations
+  if (c.mode === 'deck') {
+    const st = nearestStation(c);
+    if (st) return { kind: 'station', label: 'E — man the ' + (st === 'helm' ? 'HELM' : 'SAIL') };
+    const other = chars[1 - chars.indexOf(c)];
+    if (other && charActive(other) && other.mode === 'deck' && other.grabbedBy < 0 &&
+        Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) < CONFIG.grabRange) {
+      return { kind: 'grab-hint', label: 'F (hold) — grab your matey' };
+    }
+  }
+  return null;
+}
+
 export function pressE(c: Char) {
-  if (c.grabbedBy >= 0 || c.mode !== 'deck') return;
-  const mine = mopOf(c);
-  if (mine) {                               // put it down gently
-    c.hasMop = false;
-    mine.held = -1;
-    mine.x = clamp(c.pos.x, -layout.deckX, layout.deckX);
-    mine.z = clamp(c.pos.z, -layout.deckZ, layout.deckZ);
-    return;
+  const it = getInteract(c);
+  if (!it) return;
+  switch (it.kind) {
+    case 'crate-put':
+    case 'crate-deliver':
+      putDown(c);
+      break;
+    case 'crate-take':
+    case 'crate-fish': {
+      const n = nearestCrateFor(c);
+      if (n) pickUp(c, n.i);
+      break;
+    }
+    case 'mop-put': {
+      const mine = mopOf(c)!;
+      c.hasMop = false;
+      mine.held = -1;
+      mine.x = clamp(c.pos.x, -layout.deckX, layout.deckX);
+      mine.z = clamp(c.pos.z, -layout.deckZ, layout.deckZ);
+      break;
+    }
+    case 'mop-take': {
+      const free = nearestFreeMop(c, CONFIG.mopPickupR)!;
+      free.held = chars.indexOf(c);
+      c.hasMop = true;
+      c.scrubT = 0;
+      break;
+    }
+    case 'anchor': {
+      boat.anchored = !boat.anchored;
+      const bow = localToWorld2(anchorSpot());
+      if (boat.anchored) {
+        spawnSplash(bow.x, bow.z, false);
+        toast('Anchor down!', '#74c0fc');
+      } else {
+        toast('Anchor aweigh!', '#aef7a2');
+      }
+      audio.creak(1);
+      break;
+    }
+    case 'ashore': {
+      const w = localToWorld2(c.pos);
+      const p = nearestWalkwayPoint(w.x, w.z);
+      heelGroup.remove(c.mesh);
+      scene.add(c.mesh);
+      c.mode = 'shore';
+      c.pos.x = p.x; c.pos.z = p.z;
+      c.facing = wrapPi(c.facing + boat.yaw);
+      c.vel.x = 0; c.vel.z = 0;
+      c.jumpY = 0.25; c.vy = 1.2;
+      break;
+    }
+    case 'aboard': {
+      scene.remove(c.mesh);
+      heelGroup.add(c.mesh);
+      c.mode = 'deck';
+      const lp = worldToLocal2(c.pos);
+      c.pos.x = clamp(lp.x, -layout.deckX + 0.3, layout.deckX - 0.3);
+      c.pos.z = clamp(lp.z, -layout.deckZ + 0.3, layout.deckZ - 0.3);
+      c.facing = wrapPi(c.facing - boat.yaw);
+      c.vel.x = 0; c.vel.z = 0;
+      c.jumpY = 0.25; c.vy = 1.2;
+      break;
+    }
+    case 'station':
+      tryToggleStation(c);
+      break;
+    case 'station-leave':
+      releaseStation(c);
+      break;
+    default:
+      break;
   }
-  const free = nearestFreeMop(c, CONFIG.mopPickupR);
-  if (free && !c.holding) {
-    free.held = chars.indexOf(c);
-    c.hasMop = true;
-    c.scrubT = 0;
-    return;
-  }
-  tryToggleStation(c);
 }
 
 /* --- F: throw the mop if you hold one, else grab the matey; mash to escape --- */
@@ -157,6 +303,7 @@ export function handsEdge(c: Char) {
     if (c.mash >= CONFIG.escapeMash) breakFree(c, chars[c.grabbedBy]);
     return;
   }
+  if (c.carry >= 0) { putDown(c, true); return; }   // F = toss the crate
   if (c.mode !== 'deck') return;
   const mine = mopOf(c);
   if (mine) {                               // YEET the mop

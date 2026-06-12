@@ -1,13 +1,11 @@
 import * as THREE from 'three';
-import { CONFIG, STATION_R } from './config';
+import { CONFIG } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
-import { boat, chars, layout, myChar, session, tuning, wind } from './state';
-import { stationTakenBy } from './simChars';
-import { nearestFreeMop } from './hands';
-import { charActive } from './state';
+import { boat, chars, game, myChar, session, tuning, wind } from './state';
+import { getInteract } from './hands';
+import { cratesAboard, cratesLeft } from './cargo';
 import { dragLook } from './input';
-import { splats } from './state';
-import { pierA, dockMidZ } from './world';
+import { DELIVERY } from './world';
 import { dockedChime } from './audio';
 import { cam1 } from './scene';
 import { heelGroup } from './shipMesh';
@@ -26,6 +24,7 @@ export const restartBtn = el('restartBtn') as HTMLButtonElement;
 const compassCtx = (el('compass') as HTMLCanvasElement).getContext('2d')!;
 const miniCtx = (el('miniboat') as HTMLCanvasElement).getContext('2d')!;
 const speedEl = el('speed'), timerEl = el('timer'), windTxtEl = el('windtxt'), pierTxtEl = el('piertxt');
+const goldEl = el('gold'), cargoTxtEl = el('cargoTxt');
 const toastEl = el('toast');
 const prompt1 = el('promptP1');
 const lookHintEl = el('lookHint');
@@ -70,8 +69,8 @@ function drawCompass() {
   ctx.moveTo(0, -30); ctx.lineTo(10, 6); ctx.lineTo(0, -2); ctx.lineTo(-10, 6); ctx.closePath();
   ctx.fill();
   ctx.restore();
-  // green chevron: bearing to the pier (your destination)
-  const relDock = wrapPi(Math.atan2(pierA.x - boat.pos.x, dockMidZ - boat.pos.z) - boat.yaw);
+  // green chevron: bearing to the delivery flag
+  const relDock = wrapPi(Math.atan2(DELIVERY.x - boat.pos.x, DELIVERY.z - boat.pos.z) - boat.yaw);
   ctx.save(); ctx.translate(c, c); ctx.rotate(-relDock + Math.PI);
   ctx.fillStyle = '#69db7c';
   ctx.beginPath();
@@ -115,40 +114,16 @@ function drawMiniBoat(t: number) {
 }
 
 /* =========================== prompts =========================== */
-function stationPromptText(c: Char, keyName: string): string {
-  if (c.mode !== 'deck') {
+function stationPromptText(c: Char): string {
+  if (c.mode === 'water') {
     // overboard: point the swimmer back at the boat + leash distance
     const dist = Math.hypot(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z);
     const ang = wrapPi(Math.atan2(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z) - c.facing);
     const dir = Math.abs(ang) < 0.35 ? 'AHEAD — swim into the hull!' : (ang > 0 ? 'to the LEFT' : 'to the RIGHT');
     return 'OVERBOARD ' + (dist | 0) + 'm / ' + CONFIG.swimLeash + 'm — boat is ' + dir;
   }
-  if (c.station) return keyName + ' — let go of the ' + (c.station === 'helm' ? 'HELM' : 'SAIL');
-  if (c.hasMop) {
-    // holding the mop: the prompt nudges you toward the nearest splat
-    const near = splats.some(s => Math.hypot(s.x - c.pos.x, s.z - c.pos.z) < CONFIG.scrubRange);
-    return near ? 'Hold LMB — scrub the poop!' : '';
-  }
-  // nearest interactive wins the prompt: helm, sail or a free mop
-  const options: { d: number; txt: string }[] = [];
-  if (!stationTakenBy('helm')) {
-    const d = Math.hypot(c.pos.x - layout.helm.x, c.pos.z - layout.helm.z);
-    if (d < STATION_R) options.push({ d, txt: keyName + ' — man the HELM' });
-  }
-  if (!stationTakenBy('sail')) {
-    const d = Math.hypot(c.pos.x - layout.sailSta.x, c.pos.z - layout.sailSta.z);
-    if (d < STATION_R) options.push({ d, txt: keyName + ' — man the SAIL' });
-  }
-  const freeMop = nearestFreeMop(c, CONFIG.mopPickupR);
-  if (freeMop) options.push({ d: Math.hypot(freeMop.x - c.pos.x, freeMop.z - c.pos.z), txt: keyName + ' — pick up the mop' });
-  if (options.length) return options.sort((a, b) => a.d - b.d)[0].txt;
-  // empty hands near the matey: you COULD just grab them
-  const other = chars.find(o => o !== c && charActive(o));
-  if (other && other.mode === 'deck' && other.grabbedBy < 0 &&
-      Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) < CONFIG.grabRange) {
-    return 'F (hold) — grab your matey';
-  }
-  return '';
+  // everything else comes from the single interact source
+  return getInteract(c)?.label ?? '';
 }
 
 /* =========================== per-frame HUD =========================== */
@@ -156,11 +131,13 @@ export function drawHud(t: number) {
   speedEl.textContent = len2(boat.vel).toFixed(1);
   timerEl.textContent = fmtTime(session.runTime);
   windTxtEl.textContent = 'Wind ' + wind.strength.toFixed(0) + ' kn';
-  const distPier = Math.hypot(pierA.x - boat.pos.x, dockMidZ - boat.pos.z);
-  pierTxtEl.textContent = 'pier ' + (distPier | 0) + 'm';
+  const distDel = Math.hypot(DELIVERY.x - boat.pos.x, DELIVERY.z - boat.pos.z);
+  pierTxtEl.textContent = 'deliver ' + (distDel | 0) + 'm';
+  goldEl.textContent = game.gold + 'g';
+  cargoTxtEl.textContent = 'aboard ' + cratesAboard() + ' · left ' + cratesLeft();
   drawCompass();
   drawMiniBoat(t);
-  const txt = session.inMenu ? '' : stationPromptText(myChar(), 'E');
+  const txt = session.inMenu ? '' : stationPromptText(myChar());
   prompt1.style.display = txt ? 'block' : 'none';
   if (txt) prompt1.textContent = txt;
   lookHintEl.style.display = (!session.inMenu && !document.pointerLockElement && !dragLook) ? 'block' : 'none';

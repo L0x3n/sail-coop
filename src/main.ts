@@ -16,6 +16,7 @@ import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
 import { clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
+import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
 import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
 import {
@@ -39,6 +40,7 @@ function makeChar(name: string, shirt: number, hat: number, lx: number, lz: numb
     animMoving: false,
     rippleT: 0,
     hasMop: false, grabbedBy: -1, holding: false, mash: 0, scrubT: 0,
+    carry: -1,
   };
 }
 registerChars(
@@ -57,8 +59,8 @@ function handleLocalKeys() {
     session.started = true;
     if (code === 'KeyQ') toast('Water: ' + cycleWater(), '#74c0fc');
     if (code === 'KeyM') toggleMap();
-    if (code === 'KeyE' && !session.docked && myChar().mode === 'deck') {
-      if (netRole === 'guest') sendGrab();   // host runs the E-interaction (mop/stations)
+    if (code === 'KeyE' && !session.docked) {
+      if (netRole === 'guest') sendGrab();   // host runs the E-interaction
       else pressE(p1);
     }
     if (code === 'KeyF' && !session.docked) {
@@ -81,6 +83,7 @@ function physicsStep(dt: number) {
   if (!session.docked) {
     updateBoat(dt);
     updateHands(dt);
+    updateCargo(dt);
     chars.forEach((c, i) => { if (!charActive(c)) return; updateChar(c, i, dt, session.simT); });
     if (session.started) session.runTime += dt;
   }
@@ -134,6 +137,7 @@ function visualStep(dt: number) {
   updateWeatherVisuals(dt);
   updateCritters(dt, t);
   updateMopVisual(t);
+  updateCargoVisual(t);
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
   audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));
@@ -168,15 +172,8 @@ function frame(now: number) {
 requestAnimationFrame(frame);
 
 /* =========================== UI wiring =========================== */
-let chosenBoat: BoatPreset = BOATS[1];
-const boatCards = Array.from(document.querySelectorAll<HTMLButtonElement>('.boatcard'));
-for (const card of boatCards) {
-  card.addEventListener('click', () => {
-    boatCards.forEach(b => b.classList.remove('sel'));
-    card.classList.add('sel');
-    chosenBoat = BOATS.find(b => b.id === card.dataset.boat) ?? BOATS[1];
-  });
-}
+// you always set out in the trusty sloop — other hulls join the shop in Fas 3
+const chosenBoat: BoatPreset = BOATS[1];
 btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(chosenBoat); });
 btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(chosenBoat); });
 btnJoin.addEventListener('click', () => { audio.ensureAudio(); startJoin(joinCodeEl.value); });
@@ -192,9 +189,10 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS, mops,
+  env, layout, BOATS, mops, crates,
   _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
   _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
+  _cargo: { spawnBatch },
   get netCode() { return netCode; },
   get waterMode() { return waterMode; },
   get mapOpen() { return mapOpen; },

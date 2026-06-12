@@ -67,10 +67,11 @@ export const env = {
 
 /* =========================== game state =========================== */
 export const boat = {
-  pos: v2(0, 0),
-  yaw: Math.PI / 2,          // spawn on a beam reach (wind blows +z, island at -z)
+  pos: v2(4.8, -206),        // moored alongside the home pier
+  yaw: 0,                    // bow toward open water
   vel: v2(),
   angVel: 0,
+  anchored: true,            // starts at anchor — raise it to set off
   rudder: 0,                 // radians; positive = counter-clockwise (player D = negative)
   boomAngle: 20 * Math.PI / 180,
   heel: 0,                   // + = (internal) starboard dips
@@ -91,6 +92,15 @@ export const session = {
   started: false,
   inMenu: true,
   simT: 0,
+};
+
+/* --- the delivery economy (host-authoritative, synced) --- */
+export const game = {
+  gold: 0,
+  delivered: 0,
+  lost: 0,
+  batch: 0,
+  batchT: 0,        // seconds spent on the current shipment
 };
 
 /* --- net role --- */

@@ -36,6 +36,7 @@ const flagMat = new THREE.MeshBasicMaterial({ color: 0xe8443a, side: THREE.Doubl
 
 /* ---- rebuildable parts (assigned in buildShip) ---- */
 let shipRig: THREE.Group | null = null;
+let anchorRig: THREE.Group;          // rope + anchor, visible while anchored
 export let boomGroup: THREE.Group;
 export let wheelGroup: THREE.Group;
 let rudderGroup: THREE.Group;
@@ -218,6 +219,30 @@ export function buildShip(S: number) {
     R.add(coil);
   }
 
+  /* ---------------- the anchor (windlass at the bow) ---------------- */
+  {
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.5, 8), woodDark);
+    drum.rotation.z = Math.PI / 2;
+    drum.position.set(0, DECK_Y + 0.22, 3.1 * S);
+    R.add(drum);
+    anchorRig = new THREE.Group();
+    anchorRig.position.set(0.45 * S, DECK_Y + 0.1, 3.35 * S);
+    R.add(anchorRig);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 3.2, 5), ropeMat);
+    rope.position.y = -1.6;
+    rope.userData.noShadow = true;
+    anchorRig.add(rope);
+    const metal = new THREE.MeshLambertMaterial({ color: 0x6f777e });
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 6), metal);
+    shank.position.y = -3.2;
+    anchorRig.add(shank);
+    const arms = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 6, 10, Math.PI), metal);
+    arms.position.y = -3.55;
+    arms.rotation.z = Math.PI;
+    anchorRig.add(arms);
+    anchorRig.visible = false;
+  }
+
   /* ---------------- wheel at the helm ---------------- */
   wheelGroup = new THREE.Group();
   wheelGroup.position.set(layout.helm.x, DECK_Y + 0.75, layout.helm.z + 0.55 * S);
@@ -369,6 +394,7 @@ export function updateBoatVisuals(dt: number, t: number) {
   boomGroup.rotation.y = -boat.boomAngle;
   wheelGroup.rotation.z = -boat.rudder * 3;
   rudderGroup.rotation.y = -boat.rudder;
+  anchorRig.visible = boat.anchored;
 
   // main sail cloth
   const d = wrapPi(wind.angle - boat.yaw);

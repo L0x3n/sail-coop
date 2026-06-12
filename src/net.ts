@@ -1,7 +1,9 @@
 import Peer, { DataConnection } from 'peerjs';
 import { BOATS, DECK_Y } from './config';
+import { SHORE_Y } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, env, myChar, netDrag, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { boat, chars, env, game, myChar, netDrag, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { setBoatPreset } from './shipMesh';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
@@ -44,6 +46,10 @@ export function beginPlay() {
   modeSelEl.style.display = 'none';
   session.runTime = 0;
   session.started = false;
+  resetState();
+  resetHands(netRole === 'guest' || guestHere);
+  clearSplats();
+  resetCargo();
   applyAspect();
 }
 export function startSolo(p?: BoatPreset) {
@@ -128,6 +134,7 @@ export function hostOnData(m: NetMsg) {
     resetState();
     resetHands(guestHere);
     clearSplats();
+    resetCargo();
     netSend({ k: 'reset' });
   }
 }
@@ -165,7 +172,7 @@ export function guestOnData(m: NetMsg) {
     else removeSplat(m.id);
     return;
   }
-  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); netT.boat = null; netT.c = [null, null]; return; }
+  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); resetCargo(); netT.boat = null; netT.c = [null, null]; return; }
   if (m.k === 's') applySnapshot(m);
 }
 export function applySnapshot(m: Snapshot) {
@@ -173,6 +180,9 @@ export function applySnapshot(m: Snapshot) {
   boat.vel.x = m.b.vx; boat.vel.z = m.b.vz; boat.angVel = m.b.av;
   boat.rudder = m.b.rud; boat.boomAngle = m.b.boom; boat.heel = m.b.heel;
   boat.sailForce = m.b.sf; boat.luffing = m.b.luff;
+  boat.anchored = m.b.anc;
+  applyCargoSnap(m.cg);
+  game.gold = m.g.gold; game.delivered = m.g.del; game.lost = m.g.lost;
   wind.angle = m.w.a; wind.strength = m.w.s;
   if (m.w.wid !== env.weatherId) { env.weatherId = (m.w.wid as 0 | 1 | 2) ?? 0; env.weatherLerp = 0; }
   session.runTime = m.t;
@@ -191,16 +201,23 @@ export function applySnapshot(m: Snapshot) {
     c.hasMop = cm.hm;
     c.scrubT = cm.sc;
     c.holding = m.c.some((o, oi) => oi !== i && o.gb === i);
-    if (cm.m !== c.mode) {                              // deck <-> water transitions
+    if (cm.m !== c.mode) {                              // deck <-> water <-> shore transitions
+      const wasWater = c.mode === 'water';
       c.mode = cm.m;
-      if (cm.m === 'water') {
-        heelGroup.remove(c.mesh); scene.add(c.mesh);
-        spawnSplash(cm.x, cm.z, true);
-        if (c === myChar()) toast('OVERBOARD!', '#ffd95e');
+      if (cm.m === 'deck') {
+        if (c.mesh.parent !== heelGroup) { scene.remove(c.mesh); heelGroup.add(c.mesh); }
+        if (wasWater) {
+          const w = localToWorld2(v2(cm.x, cm.z));
+          spawnSplash(w.x, w.z, false);
+        }
       } else {
-        scene.remove(c.mesh); heelGroup.add(c.mesh);
-        const w = localToWorld2(v2(cm.x, cm.z));
-        spawnSplash(w.x, w.z, false);
+        if (c.mesh.parent !== scene) { heelGroup.remove(c.mesh); scene.add(c.mesh); }
+        if (cm.m === 'water') {
+          spawnSplash(cm.x, cm.z, true);
+          if (c === myChar()) toast('OVERBOARD!', '#ffd95e');
+        } else if (wasWater) {
+          spawnSplash(cm.x, cm.z, false);
+        }
       }
       c.pos.x = cm.x; c.pos.z = cm.z;                   // snap: coordinate space changed
     }
@@ -237,6 +254,11 @@ export function guestStep(dt: number) {
       if (mv && c.jumpY < 0.01 && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
       c.mesh.position.set(c.pos.x, y, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);   // posture comes from the ragdoll rig
+    } else if (c.mode === 'shore') {
+      let y = SHORE_Y + c.jumpY;
+      if (mv && c.jumpY < 0.01 && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
+      c.mesh.position.set(c.pos.x, y, c.pos.z);
+      c.mesh.rotation.set(0, c.facing, 0);
     } else {
       c.mesh.position.set(c.pos.x, 0.18 + Math.sin(session.simT * 3 + i) * 0.08, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);
@@ -264,9 +286,12 @@ export function hostNetStep(dt: number) {
   netSend({
     k: 's',
     b: { x: boat.pos.x, z: boat.pos.z, yaw: boat.yaw, vx: boat.vel.x, vz: boat.vel.z, av: boat.angVel,
-         rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing },
+         rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing,
+         anc: boat.anchored },
     w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp },
     t: session.runTime, d: session.docked,
+    cg: cargoSnap(),
+    g: { gold: game.gold, del: game.delivered, lost: game.lost },
     c: chars.map(c => ({
       x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station,
       gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT,

@@ -61,6 +61,20 @@ host-auktoritativ), dev-hook `__sail` för deterministisk verifiering.
 Målet: en komplett runda med början, slut och betalning. Efter Fas 1 ÄR
 det här ett spel.
 
+**Ramar (beslutade):**
+- Man börjar ALLTID med sloopen — skiff & galleon flyttar in i kaos-butiken
+  (Fas 3) som upplåsningar. Menyn väljer inte båt.
+- **Ingen parkeringsindikation.** Det som räknas är att lasten bärs in i
+  leveransarean: *stanna båten → bär av lasten → få betalt*. Dockzoner,
+  "DOCKED!"-skärmen och dockningslogiken tas bort.
+- Båten **spawnar förtöjd vid hemmapirens kaj** och piraterna börjar PÅ
+  bryggan — man kliver ombord och påbörjar äventyret.
+- **Ankaret**: E vid ankarspelet i fören droppar ankaret (båten stannar
+  snabbt, seglet släpps), E igen hivar upp det. Ankaret är hur man
+  "parkerar" — var som helst, på riktigt.
+- Nytt karaktärsläge **iland**: gå på bryggor (och senare stränder), kliv
+  av/på båten med E vid gångbordet, klättra upp ur vattnet på bryggan.
+
 ### 1a. Fysisk däckslast
 - Lådor & tunnor som fysikobjekt på däck (pool ~12): de **GLIDER** med
   kränging/svängar/halka — exakt samma pseudo-tröghetsmodell som
@@ -129,9 +143,12 @@ Målet: skäl att spela "en runda till", utan att bryta lag 2.
 - Prislappar grovt: 1 runda = råd med 1 liten grej, 3–4 rundor = stor grej.
 
 ### 3b. Butiken (i hamn, mellan rundor)
+- **Skeppen**: man börjar alltid med sloopen — **skiffen och galleonen
+  köps här** (skiff = kvick och tippig med få lådplatser; galleon = 14
+  lådor och ett vandrande försäkringsärende).
 - **Större lastdäck**: +4 lådplatser (= mer pengar, mer yta att tappa på).
-- **Kanonen**: ny station (sikta/ladda/skjut). Får mening i Fas 5 — köps
-  här som ren dumhet först (saluter, skjuta måsar — som hämnas i svärm).
+- **Kanonen**: ny station (sikta/ladda/skjut). Köps som ren dumhet
+  (saluter, skjuta måsar — som hämnas i svärm).
 - **Pråm på släp**: +6 lådor på en girig släpkärra som svänger SJÄLV
   (pendelfysik) och kan kapsejsa. Mer last = mer styrproblem. Lag 2 i kubik.
 - **Hattar.** Viktigast. Kosmetik som åker av vid knockdown och flyter.
@@ -175,19 +192,15 @@ Målet: den stora dramaturgin — och det billiga misslyckandet (lag 3).
 
 ---
 
-## Fas 5 — Faror med avsikt (efter att kärnan bevisats)
+## ~~Faror med avsikt~~ (PARKERAD — tas ev. in igen senare)
 
-Byggs BARA om Fas 1–4 håller i speltester. Kandidater, i ordning:
-- **Klippfält + strömmar**: passiva faror först — billigast kaos per rad kod.
-- **Kapare-skiff**: ett långsamt AI-segel som försöker komma längsmed och
-  STJÄLA lådor med änterhakar (inte skada — stjäla). Kanonen får sitt syfte:
-  skjut av hakarna. Fail = de ror iväg med er rom.
-- **Kraken-tentakel** (storm-exklusiv): griper relingen, lutar båten tills
-  någon bonkar den med moppen. Moppen som vapen får sin finest hour.
+Borttagen ur planen tills vidare. Idéerna sparas här i kortform om vi
+ångrar oss: klippfält/strömmar, kapare-skiff som stjäl lådor (ger kanonen
+syfte), kraken-tentakel som bonkas med moppen.
 
 ---
 
-## Fas 6 — Skala & utsläpp
+## Fas 5 — Skala & utsläpp
 
 - Deploy till URL (GitHub Pages) så ingen skickar filer.
 - Reläserver (Socket.IO på Render, Sviten-receptet) om PeerJS-brokern

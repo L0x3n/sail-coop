@@ -1,13 +1,16 @@
 import { CONFIG, DECK_Y, RAIL_H, STATION_R } from './config';
 import { D2R, clamp, headVec, lerp, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, chars, env, layout, myChar, netRole, p2, session, slipAt, tuning } from './state';
+import { boat, chars, env, game, layout, myChar, netRole, p2, session, slipAt, tuning } from './state';
 import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { heelGroup } from './shipMesh';
 import { scene } from './scene';
-import { obstacles } from './world';
+import { SHORE_Y, WALKWAYS, obstacles } from './world';
 import { toast } from './hud';
 import type { Axes, Char } from './types';
+
+export const onWalkway = (x: number, z: number, pad = 0.15) =>
+  WALKWAYS.some(w => x > w.x0 - pad && x < w.x1 + pad && z > w.z0 - pad && z < w.z1 + pad);
 
 /* ============ boat-local <-> world transforms ============ */
 export function localToWorld2(p: { x: number; z: number }) {
@@ -156,6 +159,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
         if (slipping) acc *= CONFIG.poopTraction;
         if (c.hasMop) acc *= CONFIG.mopCarrySlow;
         if (c.holding) acc *= CONFIG.grabCarrySlow;
+        if (c.carry >= 0) acc *= 0.8;
         // screen-right of heading f is (-cos f, sin f)
         c.vel.x += (Math.sin(c.facing) * ax.fwd - Math.cos(c.facing) * ax.strafe) / n * acc * dt;
         c.vel.z += (Math.cos(c.facing) * ax.fwd + Math.sin(c.facing) * ax.strafe) / n * acc * dt;
@@ -219,6 +223,48 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     c.mesh.position.set(c.pos.x, y, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);   // flops, leans and tumbles live in the ragdoll rig
 
+  } else if (c.mode === 'shore') {
+    // ---- ashore: world-space walking on the piers ----
+    const grounded = c.jumpY <= 0.0001;
+    if (charAxes(c).j && grounded && c.knock <= 0) c.vy = CONFIG.jumpVel;
+    if (!grounded || c.vy > 0) {
+      c.vy -= CONFIG.gravity * dt;
+      c.jumpY = Math.max(0, c.jumpY + c.vy * dt);
+      if (c.jumpY === 0 && c.vy < 0) c.vy = 0;
+    }
+    if (c.knock <= 0) {
+      const ax = charAxes(c);
+      if (ax.fwd || ax.strafe) {
+        const n = Math.hypot(ax.fwd, ax.strafe);
+        let acc = CONFIG.walkAccel * (grounded ? 0.95 : CONFIG.airControl);
+        if (c.hasMop) acc *= CONFIG.mopCarrySlow;
+        if (c.carry >= 0) acc *= 0.8;
+        c.vel.x += (Math.sin(c.facing) * ax.fwd - Math.cos(c.facing) * ax.strafe) / n * acc * dt;
+        c.vel.z += (Math.cos(c.facing) * ax.fwd + Math.sin(c.facing) * ax.strafe) / n * acc * dt;
+        if (grounded) c.walkPhase += dt * 11;
+      }
+    }
+    const damp = !grounded ? 0.25 : (c.knock > 0 ? CONFIG.slideDampDown : CONFIG.walkDamp);
+    c.vel.x -= c.vel.x * Math.min(1, damp * dt);
+    c.vel.z -= c.vel.z * Math.min(1, damp * dt);
+    c.pos.x += c.vel.x * dt;
+    c.pos.z += c.vel.z * dt;
+    // step off the pier edge -> into the drink
+    if (grounded && !onWalkway(c.pos.x, c.pos.z)) {
+      c.mode = 'water';
+      c.jumpY = 0; c.vy = 0;
+      c.knock = Math.max(c.knock, 0.4);
+      spawnSplash(c.pos.x, c.pos.z, false);
+      toast(c.name + ' walked off the pier!', '#74c0fc');
+      return;
+    }
+    const moving = Math.hypot(c.vel.x, c.vel.z) > 0.4;
+    c.animMoving = moving && c.knock <= 0;
+    let sy = SHORE_Y + c.jumpY;
+    if (moving && grounded && c.knock <= 0) sy += Math.abs(Math.sin(c.walkPhase)) * 0.09;
+    c.mesh.position.set(c.pos.x, sy, c.pos.z);
+    c.mesh.rotation.set(0, c.facing, 0);
+
   } else {
     // ---- in the water: free swimming (world space) ----
     let swimming = false, mx = 0, mz = 0;
@@ -262,6 +308,19 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     // bobbing at the surface; the prone paddling pose is the ragdoll's
     c.mesh.position.set(c.pos.x, 0.18 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);
+    // swim against a pier -> clamber up onto it
+    if (c.knock <= 0 && swimming && onWalkway(c.pos.x + mx * 0.7, c.pos.z + mz * 0.7, 0.45)) {
+      const w = WALKWAYS.find(ww =>
+        c.pos.x + mx * 0.7 > ww.x0 - 0.45 && c.pos.x + mx * 0.7 < ww.x1 + 0.45 &&
+        c.pos.z + mz * 0.7 > ww.z0 - 0.45 && c.pos.z + mz * 0.7 < ww.z1 + 0.45)!;
+      c.mode = 'shore';
+      c.pos.x = clamp(c.pos.x + mx * 0.7, w.x0 + 0.2, w.x1 - 0.2);
+      c.pos.z = clamp(c.pos.z + mz * 0.7, w.z0 + 0.2, w.z1 - 0.2);
+      c.knock = 0.4; c.jumpY = 0; c.vy = 0; c.vel.x = 0; c.vel.z = 0;
+      spawnSplash(c.pos.x, c.pos.z, false);
+      toast(c.name + ' clambered onto the pier!', '#aef7a2');
+      return;
+    }
     // climb back up ONLY when deliberately swimming INTO the hull
     const lp = worldToLocal2(c.pos);
     if (c.knock <= 0 && swimming &&
@@ -275,17 +334,21 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
 
 /* =========================== full state reset =========================== */
 export function resetState() {
-  boat.pos.x = 0; boat.pos.z = 0; boat.yaw = Math.PI / 2;
+  // moored alongside the home pier, anchor down, crew ON the pier
+  boat.pos.x = 4.8; boat.pos.z = -206; boat.yaw = 0;
   boat.vel.x = 0; boat.vel.z = 0; boat.angVel = 0;
   boat.rudder = 0; boat.boomAngle = 20 * D2R; boat.heel = 0;
+  boat.anchored = true;
   session.runTime = 0; session.started = false; session.docked = false;
   session.dockTimer = 0; session.shake = 0;
+  game.delivered = 0; game.lost = 0; game.batchT = 0;   // gold survives resets
   document.getElementById('msg')!.style.display = 'none';
   chars.forEach((c, i) => {
     releaseStation(c);
-    if (c.mesh.parent !== heelGroup) { scene.remove(c.mesh); heelGroup.add(c.mesh); }
-    c.mode = 'deck'; c.knock = 0; c.vel.x = 0; c.vel.z = 0;
-    c.pos.x = i === 0 ? -0.7 : 0.9; c.pos.z = -1.5;
-    c.facing = 0; c.pitch = 0; c.jumpY = 0; c.vy = 0;
+    if (c.mesh.parent !== scene) { heelGroup.remove(c.mesh); scene.add(c.mesh); }
+    c.mode = 'shore'; c.knock = 0; c.vel.x = 0; c.vel.z = 0;
+    c.pos.x = i === 0 ? -0.8 : 0.8; c.pos.z = -202;
+    c.facing = Math.PI / 2;                              // facing the moored boat
+    c.pitch = 0; c.jumpY = 0; c.vy = 0; c.carry = -1;
   });
 }

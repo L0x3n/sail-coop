@@ -3,6 +3,7 @@ import { CONFIG, DECK_Y } from './config';
 import { cam1 } from './scene';
 import { boatGroup, heelGroup } from './shipMesh';
 import { myChar, session } from './state';
+import { SHORE_Y } from './world';
 import type { Char } from './types';
 
 /* =========================== first-person camera =========================== */
@@ -27,6 +28,17 @@ export function updateFPCamera(c: Char, cam: THREE.PerspectiveCamera, t: number)
     _qp.setFromAxisAngle(X_AX, c.pitch); _q.multiply(_qp);
     if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.55); _q.multiply(_qr); }
     cam.quaternion.copy(_q);
+  } else if (c.mode === 'shore') {
+    // standing on a pier: plain world-space first person
+    let ey = SHORE_Y + CONFIG.eyeHeight + c.jumpY;
+    if (c.knock > 0) ey = SHORE_Y + 0.5;
+    else if (c.jumpY <= 0.0001 && Math.hypot(c.vel.x, c.vel.z) > 0.4)
+      ey += Math.abs(Math.sin(c.walkPhase)) * CONFIG.headBob;
+    cam.position.set(c.pos.x, ey, c.pos.z);
+    _qy.setFromAxisAngle(Y_UP, c.facing + Math.PI);
+    _qp.setFromAxisAngle(X_AX, c.pitch); _qy.multiply(_qp);
+    if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.55); _qy.multiply(_qr); }
+    cam.quaternion.copy(_qy);
   } else {
     // bobbing at the waterline
     cam.position.set(c.pos.x, 0.5 + Math.sin(t * 2.6 + c.pos.x) * 0.12, c.pos.z);

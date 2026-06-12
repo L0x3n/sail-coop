@@ -36,7 +36,7 @@ export interface EyeState {
   blink: number; blinkT: number;
 }
 
-export type CharMode = 'deck' | 'water';
+export type CharMode = 'deck' | 'water' | 'shore';
 export type Station = 'helm' | 'sail' | null;
 
 export interface Char {
@@ -58,12 +58,13 @@ export interface Char {
   eye?: EyeState;
   rag?: RagState;
   rippleT: number;
-  /* hands: mop + grab/throw */
+  /* hands: mop + grab/throw + cargo */
   hasMop: boolean;
   grabbedBy: number;  // index of the grabber, -1 = free
   holding: boolean;   // currently carrying the other pirate
   mash: number;       // escape presses accumulated while grabbed
   scrubT: number;     // current scrub progress in seconds
+  carry: number;      // crate index being carried, -1 = none
 }
 
 /* --- net protocol --- */
@@ -72,14 +73,18 @@ export interface CharSnap {
   gb: number; hm: boolean; sc: number;
 }
 export interface MopSnap { x: number; z: number; h: number; held: number; thrown: boolean; on: boolean; }
+/* crate states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone */
+export interface CrateSnap { s: number; x: number; z: number; h: number; cr: number; }
 export interface Snapshot {
   k: 's';
   b: { x: number; z: number; yaw: number; vx: number; vz: number; av: number;
-       rud: number; boom: number; heel: number; sf: number; luff: boolean };
+       rud: number; boom: number; heel: number; sf: number; luff: boolean; anc: boolean };
   w: { a: number; s: number; wid: number; wl: number };
   t: number; d: boolean;
   c: CharSnap[];
   m: MopSnap[];   // the mops (boat-local)
+  cg: CrateSnap[];
+  g: { gold: number; del: number; lost: number };
 }
 export type NetMsg =
   | Snapshot
