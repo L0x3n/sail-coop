@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { TAU } from './mathUtil';
 import { boat, chars, charActive, env, wind } from './state';
-import { DELIVERY, EXTRA_ISLES, destA, destB, islandPos, pierA, pierB } from './world';
+import { DELIVERY, EXTRA_ISLES, PIERS, ROUTES, islandPos, pierA, pierB, routeIdx } from './world';
 import { WEATHERS } from './weather';
 
 /* =========================== big map (M) =========================== */
@@ -51,22 +51,24 @@ export function drawMap() {
       ctx.beginPath(); ctx.arc(mx(isle.x), my(isle.z), rr * 0.5, 0, TAU); ctx.fill();
     }
   }
-  // home pier
+  // every pier (home + all routes)
   ctx.fillStyle = '#8a5a33';
-  ctx.fillRect(mx(pierA.x) - 3, my(pierB.z), 6, my(pierA.z) - my(pierB.z));
+  for (const p of PIERS) {
+    const x0 = Math.min(mx(p.a.x), mx(p.b.x)), x1 = Math.max(mx(p.a.x), mx(p.b.x));
+    const y0 = Math.min(my(p.a.z), my(p.b.z)), y1 = Math.max(my(p.a.z), my(p.b.z));
+    ctx.fillRect(x0 - 3, y0 - 3, Math.max(6, x1 - x0 + 6), Math.max(6, y1 - y0 + 6));
+  }
   ctx.fillStyle = '#cfeefc';
   ctx.font = 'bold 12px Consolas';
   ctx.textAlign = 'center';
   ctx.fillText('HOME', mx(pierA.x), my(pierB.z) - 8);
-  // delivery pier + flag
-  ctx.fillStyle = '#8a5a33';
-  ctx.fillRect(mx(destB.x), my(destA.z) - 3, mx(destA.x) - mx(destB.x), 6);
+  // the active delivery flag
   ctx.fillStyle = '#69db7c';
   ctx.beginPath();
   ctx.arc(mx(DELIVERY.x), my(DELIVERY.z), 7, 0, TAU);
   ctx.fill();
   ctx.fillStyle = '#aef7a2';
-  ctx.fillText('DELIVER', mx(DELIVERY.x), my(DELIVERY.z) - 12);
+  ctx.fillText('DELIVER · ' + ROUTES[routeIdx].name, mx(DELIVERY.x), my(DELIVERY.z) - 12);
   // rocks
   ctx.fillStyle = '#9aa3ab';
   for (const r of [{ x: -19, z: -62, r: 4 }, { x: 23, z: -118, r: 5 }, { x: -10, z: -168, r: 3.5 }, { x: 26, z: -205, r: 4.5 }]) {

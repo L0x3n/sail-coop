@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, rightVec } from './mathUtil';
-import { boat, charActive, chars, game, layout, slipAt, tuning, wind } from './state';
+import { boat, charActive, chars, game, layout, owned, saveProgress, slipAt, tuning, wind } from './state';
 import { scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { makePlankTexture } from './textures';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { localToWorld2, onWalkway, worldToLocal2 } from './simChars';
-import { DELIVERY, HOME_LOAD, SHORE_Y } from './world';
+import { DELIVERY, HOME_LOAD, ROUTES, SHORE_Y, routeIdx } from './world';
 import { toast } from './hud';
 import * as audio from './audio';
+import { env } from './state';
 import type { Char } from './types';
 
 /* ===================================================================
@@ -18,8 +19,9 @@ import type { Char } from './types';
    pirates), fall out through the gangway gaps, float for a while, and
    pay out when carried into the delivery circle. The round IS these.
    =================================================================== */
-export const CRATE_N = 6;
-export const PAY_PER_CRATE = 12;
+export const CRATE_N = 10;                                   // pool size (big deck uses all of it)
+export const batchSize = () => (owned.bigDeck ? 10 : 6);
+export const payPerCrate = () => ROUTES[routeIdx].pay;
 
 /* states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone */
 export interface Crate {
@@ -28,13 +30,16 @@ export interface Crate {
   vx: number; vz: number;
   carrier: number;
   floatT: number;
+  lashed: boolean;
   mesh: THREE.Group;
+  lashMesh: THREE.Group;
 }
 export const crates: Crate[] = [];
 {
   const tex = makePlankTexture('#b08753', '#7a5232', 128, 128, 4);
   const boxMat = new THREE.MeshLambertMaterial({ map: tex });
   const frameMat = new THREE.MeshLambertMaterial({ color: 0x5d3a20 });
+  const ropeMat = new THREE.MeshLambertMaterial({ color: 0x4a3826 });
   for (let i = 0; i < CRATE_N; i++) {
     const g = new THREE.Group();
     const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), boxMat);
@@ -45,10 +50,40 @@ export const crates: Crate[] = [];
       rim.position.y = ey;
       g.add(rim);
     }
+    // crossed lashing ropes, shown while lashed
+    const lash = new THREE.Group();
+    for (const ry of [0, Math.PI / 2]) {
+      const rope = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.07), ropeMat);
+      rope.rotation.y = ry;
+      lash.add(rope);
+    }
+    lash.position.y = 0.28;
+    lash.visible = false;
+    g.add(lash);
     g.visible = false;
     scene.add(g);
-    crates.push({ s: 4, x: 0, z: 0, vx: 0, vz: 0, carrier: -1, floatT: 0, mesh: g });
+    crates.push({ s: 4, x: 0, z: 0, vx: 0, vz: 0, carrier: -1, floatT: 0, lashed: false, mesh: g, lashMesh: lash });
   }
+}
+
+/* --- lashing: trade pay for stability, void on one hard hit --- */
+export const lashed = () => crates.some(cr => cr.s === 1 && cr.lashed);
+export const anyLashable = () => crates.some(cr => cr.s === 1);
+export function setLashed(on: boolean) {
+  for (const cr of crates) if (cr.s === 1) cr.lashed = on;
+  toast(on ? 'Cargo lashed down — 20% off the pay, but it will not slide.'
+           : 'Cargo untied — full pay, hold on to your crates!', '#ffd95e');
+}
+export function snapLashings() {
+  if (!lashed()) return;
+  for (const cr of crates) {
+    if (cr.s === 1 && cr.lashed) {
+      cr.lashed = false;
+      cr.vx += (Math.random() - 0.5) * 4;
+      cr.vz += (Math.random() - 0.5) * 4;
+    }
+  }
+  toast('The lashings SNAPPED!', '#ff8787');
 }
 
 let respawnT = -1;
@@ -56,15 +91,17 @@ let respawnT = -1;
 export function spawnBatch() {
   game.batch++;
   game.batchT = 0;
+  const n = batchSize();
   crates.forEach((c, i) => {
-    c.s = 0;
+    c.s = i < n ? 0 : 4;
     c.x = HOME_LOAD.x - 0.8 + (i % 2) * 1.6;
     c.z = HOME_LOAD.z - 1.0 + Math.floor(i / 2) * 1.0;
     c.vx = 0; c.vz = 0;
     c.carrier = -1;
     c.floatT = 0;
+    c.lashed = false;
   });
-  toast('Shipment ready on the home pier — ' + CRATE_N + ' crates to the green flag!', '#ffd95e');
+  toast('Shipment ready on the home pier — ' + n + ' crates to the green flag!', '#ffd95e');
 }
 export function resetCargo() {
   respawnT = -1;
@@ -114,12 +151,14 @@ export function putDown(c: Char, toss = false) {
     const tx = c.pos.x + f.x * ahead, tz = c.pos.z + f.z * ahead;
     if (Math.hypot(tx - DELIVERY.x, tz - DELIVERY.z) < DELIVERY.r) {
       // SOLD! that's the whole game
+      const pay = Math.round(payPerCrate() * (cr.lashed ? 0.8 : 1));
       cr.s = 4;
-      game.gold += PAY_PER_CRATE;
+      game.gold += pay;
       game.delivered++;
+      saveProgress();
       audio.dockedChime();
       spawnDroplets(tx, tz, 6, 1.2, 2.6);
-      toast('Crate delivered! +' + PAY_PER_CRATE + 'g', '#aef7a2');
+      toast('Crate delivered! +' + pay + 'g' + (cr.lashed ? ' (lashed -20%)' : ''), '#aef7a2');
       checkBatchDone();
       return;
     }
@@ -144,6 +183,7 @@ export function updateCargo(dt: number) {
   const fwd = headVec(boat.yaw), rgt = rightVec(boat.yaw);
   for (const cr of crates) {
     if (cr.s === 1) {
+      if (cr.lashed) { cr.vx = 0; cr.vz = 0; continue; }   // tied down tight
       // deck crate: same pseudo-inertia as the pirates, a bit heavier
       let sx = 0, sz = 0;
       sx += -(boat.lastAccel.x * rgt.x + boat.lastAccel.z * rgt.z) * CONFIG.inertiaScale * 0.85;
@@ -152,6 +192,7 @@ export function updateCargo(dt: number) {
       sx += (w * w * cr.x - wd * cr.z) * CONFIG.inertiaScale * 0.85;
       sz += (w * w * cr.z + wd * cr.x) * CONFIG.inertiaScale * 0.85;
       sx += Math.sin(boat.heel) * tuning.heelSlide * 0.8;
+      sx += env.bigWave * 5.0;                              // the long swell shoves cargo
       if (slipAt(cr.x, cr.z)) { sx *= CONFIG.poopSlip; sz *= CONFIG.poopSlip; }
       cr.vx += sx * dt;
       cr.vz += sz * dt;
@@ -249,6 +290,7 @@ export function updateCargoVisual(t: number) {
         continue;
       }
     }
+    cr.lashMesh.visible = cr.s === 1 && cr.lashed;
     if (cr.s === 1) {
       if (m.parent !== heelGroup) heelGroup.add(m);
       m.position.set(cr.x, DECK_Y + 0.28, cr.z);
@@ -267,21 +309,23 @@ export function updateCargoVisual(t: number) {
 }
 
 /* guest mirror */
-export function applyCargoSnap(cg: { s: number; x: number; z: number; h: number; cr: number }[]) {
+export function applyCargoSnap(cg: { s: number; x: number; z: number; h: number; cr: number; l: boolean }[]) {
   cg.forEach((s, i) => {
     const cr = crates[i];
     if (!cr) return;
     cr.s = s.s as Crate['s'];
     cr.x = s.x; cr.z = s.z;
     cr.carrier = s.cr;
+    cr.lashed = s.l;
   });
   chars.forEach((c, i) => {
     c.carry = crates.findIndex(cr => cr.s === 2 && cr.carrier === i);
   });
 }
 export function cargoSnap() {
-  return crates.map(cr => ({ s: cr.s, x: cr.x, z: cr.z, h: 0, cr: cr.carrier }));
+  return crates.map(cr => ({ s: cr.s, x: cr.x, z: cr.z, h: 0, cr: cr.carrier, l: cr.lashed }));
 }
+export const respawnPending = () => respawnT > 0;
 export const cratesAboard = () =>
   crates.filter(cr => cr.s === 1 || (cr.s === 2 && chars[cr.carrier]?.mode === 'deck')).length;
 export const cratesLeft = () => crates.filter(cr => cr.s !== 4).length;

@@ -1,19 +1,21 @@
 import './style.css';
 import { BOATS, CONFIG } from './config';
 import { clamp, len2, v2, wrapPi } from './mathUtil';
-import { boat, charActive, chars, env, layout, myChar, netRole, guestHere, p1, p2, registerChars, session, wind } from './state';
+import { boat, charActive, chars, env, game, layout, myChar, netRole, guestHere, owned, p1, p2, prefs, registerChars, session, splats, wind } from './state';
 import { keys, pressedQueue } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
 import { fancyUniforms, fancyWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
 import { buildWorld, islandPos } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
-import { makePirate, animateChar } from './pirates';
+import { makePirate, animateChar, updateHats } from './pirates';
+import { equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
 import { spawnDroplets, spawnWake, updateSplash, updateStreaks, updateWake } from './effects';
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
+import { director, updateDirector } from './director';
 import { clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
 import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
@@ -21,13 +23,16 @@ import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
-  netCode, requestRestart, sendGrab, sendHandsEdge, sendMopTap, startHost, startJoin, startSolo,
+  netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap,
+  startHost, startJoin, startSolo,
 } from './net';
+import { getInteract } from './hands';
 import type { BoatPreset, Char } from './types';
 
 /* =========================== characters =========================== */
 function makeChar(name: string, shirt: number, hat: number, lx: number, lz: number): Char {
-  const mesh = makePirate(shirt, hat, name === 'P1' ? 'captain' : 'bandana');
+  const hatStyle = prefs.hats[name === 'P1' ? 0 : 1] ?? (name === 'P1' ? 'captain' : 'bandana');
+  const mesh = makePirate(shirt, hat, hatStyle as 'captain' | 'bandana');
   heelGroup.add(mesh);
   return {
     name, mesh,
@@ -35,6 +40,7 @@ function makeChar(name: string, shirt: number, hat: number, lx: number, lz: numb
     pos: v2(lx, lz), vel: v2(),
     knock: 0, walkPhase: 0, facing: 0, pitch: 0,
     jumpY: 0, vy: 0,
+    hat: hatStyle,
     netAxes: { fwd: 0, strafe: 0, j: 0, h: 0, u: 0 },
     overboardCount: 0,
     animMoving: false,
@@ -60,7 +66,9 @@ function handleLocalKeys() {
     if (code === 'KeyQ') toast('Water: ' + cycleWater(), '#74c0fc');
     if (code === 'KeyM') toggleMap();
     if (code === 'KeyE' && !session.docked) {
-      if (netRole === 'guest') sendGrab();   // host runs the E-interaction
+      if (shopOpen) { toggleShop(); }
+      else if (getInteract(myChar())?.kind === 'shop') { toggleShop(); }   // the panel is local
+      else if (netRole === 'guest') sendGrab();   // host runs the E-interaction
       else pressE(p1);
     }
     if (code === 'KeyF' && !session.docked) {
@@ -79,6 +87,7 @@ function physicsStep(dt: number) {
   session.simT += dt;
   handleLocalKeys();
   updateWeatherHost(dt);
+  updateDirector(dt);
   updateWind(dt, session.simT);
   if (!session.docked) {
     updateBoat(dt);
@@ -138,6 +147,8 @@ function visualStep(dt: number) {
   updateCritters(dt, t);
   updateMopVisual(t);
   updateCargoVisual(t);
+  updateHats(dt, t);
+  if (shopOpen) refreshShop();
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
   audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));
@@ -172,10 +183,15 @@ function frame(now: number) {
 requestAnimationFrame(frame);
 
 /* =========================== UI wiring =========================== */
-// you always set out in the trusty sloop — other hulls join the shop in Fas 3
-const chosenBoat: BoatPreset = BOATS[1];
-btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(chosenBoat); });
-btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(chosenBoat); });
+// you set out in the last hull you equipped (sloop until the shop says otherwise)
+const startBoat = (): BoatPreset =>
+  BOATS.find(b => b.id === prefs.ship && (b.id === 'sloop' || owned[b.id as 'skiff' | 'galleon'])) ?? BOATS[1];
+setShopHandlers(
+  id => { if (netRole === 'guest') sendBuy(id); else tryBuy(id); },
+  style => { if (netRole === 'guest') sendHat(style); else equipHat(0, style); },
+);
+btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(startBoat()); });
+btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(startBoat()); });
 btnJoin.addEventListener('click', () => { audio.ensureAudio(); startJoin(joinCodeEl.value); });
 restartBtn.addEventListener('click', () => requestRestart());
 applyAspect();
@@ -189,10 +205,11 @@ window.__sail = {
   _three: { renderer, scene, cam1, cam2 },
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
-  env, layout, BOATS, mops, crates,
+  env, layout, BOATS, mops, crates, splats, game,
   _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
   _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
   _cargo: { spawnBatch },
+  _director: director,
   get netCode() { return netCode; },
   get waterMode() { return waterMode; },
   get mapOpen() { return mapOpen; },

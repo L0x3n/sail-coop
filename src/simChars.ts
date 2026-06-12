@@ -52,21 +52,20 @@ export function tryToggleStation(c: Char) {
   }
 }
 
-/* =========================== overboard / climb =========================== */
+/* ============== seamless transitions: no prompts, no pratfalls ============== */
 export function goOverboard(c: Char) {
   const w = localToWorld2(c.pos);
   releaseStation(c);
   c.mode = 'water';
   heelGroup.remove(c.mesh);
   scene.add(c.mesh);
-  // carry some of the boat's momentum into the drink
+  // straight into the water — keep some momentum, no daze, no announcement
   c.vel = v2(boat.vel.x * 0.4, boat.vel.z * 0.4);
   c.pos = v2(w.x, w.z);
   c.facing = wrapPi(boat.yaw + c.facing);   // boat-local facing -> world facing
   c.jumpY = 0; c.vy = 0;
-  c.knock = 1.0; c.overboardCount++;        // dazed long enough that a fast hull slips away
+  c.overboardCount++;
   spawnSplash(w.x, w.z, true);
-  toast(c.name + ' OVERBOARD!', c.name === 'P1' ? '#ff8a7a' : '#ffd95e');
 }
 export function climbAboard(c: Char) {
   const lp = worldToLocal2(c.pos);
@@ -75,10 +74,48 @@ export function climbAboard(c: Char) {
   heelGroup.add(c.mesh);
   c.pos = v2(clamp(lp.x, -layout.deckX + 0.2, layout.deckX - 0.2), clamp(lp.z, -layout.deckZ + 0.2, layout.deckZ - 0.2));
   c.facing = wrapPi(c.facing - boat.yaw);   // world facing -> boat-local facing
-  c.vel = v2(); c.knock = 0.5; c.jumpY = 0; c.vy = 0;
+  c.vel = v2(); c.jumpY = 0; c.vy = 0;
   const w = localToWorld2(c.pos);
   spawnSplash(w.x, w.z, false);
-  toast(c.name + ' back aboard!', '#aef7a2');
+}
+/* leaving the deck past a rail/gap: land on a pier if one is there, else the sea */
+function exitDeck(c: Char) {
+  const w = localToWorld2(c.pos);
+  if (onWalkway(w.x, w.z, 0.7)) {
+    releaseStation(c);
+    heelGroup.remove(c.mesh);
+    scene.add(c.mesh);
+    c.mode = 'shore';
+    // velocity + facing rotate into world space; a mid-air hop carries through
+    const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+    c.vel = v2(r.x * c.vel.x + f.x * c.vel.z, r.z * c.vel.x + f.z * c.vel.z);
+    c.pos = v2(w.x, w.z);
+    c.facing = wrapPi(c.facing + boat.yaw);
+    return;
+  }
+  goOverboard(c);
+}
+/* leaving a pier: onto the deck if the boat is right there, else the sea */
+function exitWalkway(c: Char, grounded: boolean) {
+  const lp = worldToLocal2(c.pos);
+  if (Math.abs(lp.x) < layout.deckX + 0.2 && Math.abs(lp.z) < layout.deckZ + 0.2) {
+    scene.remove(c.mesh);
+    heelGroup.add(c.mesh);
+    c.mode = 'deck';
+    const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+    c.vel = v2(c.vel.x * r.x + c.vel.z * r.z, c.vel.x * f.x + c.vel.z * f.z);
+    c.pos = v2(clamp(lp.x, -layout.deckX + 0.1, layout.deckX - 0.1), clamp(lp.z, -layout.deckZ + 0.1, layout.deckZ - 0.1));
+    c.facing = wrapPi(c.facing - boat.yaw);
+    c.jumpY += 0.15;                           // pier deck sits a touch higher
+    return true;
+  }
+  if (grounded) {                              // straight into the water, no theatre
+    c.mode = 'water';
+    c.jumpY = 0; c.vy = 0;
+    spawnSplash(c.pos.x, c.pos.z, false);
+    return true;
+  }
+  return false;                                // still airborne — keep flying
 }
 const inGap = (z: number) => layout.gaps.some(g => z > g.z0 && z < g.z1);
 
@@ -183,6 +220,8 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     sz += (w * w * c.pos.z + wd * c.pos.x) * CONFIG.inertiaScale;
     // heel: downhill is +x when (internal) starboard dips
     sx += Math.sin(boat.heel) * tuning.heelSlide;
+    // the director's long swell shoves everyone sideways
+    sx += env.bigWave * 6.0;
     // wave wobble scales with the sea state — a heavy swell makes footing genuinely bad
     const wob = CONFIG.wobbleSlide * env.swell;
     sx += Math.sin(t * 0.9 + ci * 2.1) * wob;
@@ -200,7 +239,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     const overRail = c.jumpY > RAIL_H;
     if (Math.abs(c.pos.x) > layout.deckX) {
       if (inGap(c.pos.z) || overRail) {
-        if (Math.abs(c.pos.x) > layout.deckX + 0.55) { goOverboard(c); return; }
+        if (Math.abs(c.pos.x) > layout.deckX + 0.55) { exitDeck(c); return; }
       } else {
         c.pos.x = Math.sign(c.pos.x) * layout.deckX;
         c.vel.x *= -0.2;
@@ -208,7 +247,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     }
     if (Math.abs(c.pos.z) > layout.deckZ) {
       if (overRail) {
-        if (Math.abs(c.pos.z) > layout.deckZ + 0.55) { goOverboard(c); return; }
+        if (Math.abs(c.pos.z) > layout.deckZ + 0.55) { exitDeck(c); return; }
       } else {
         c.pos.z = Math.sign(c.pos.z) * layout.deckZ;
         c.vel.z *= -0.2;
@@ -249,15 +288,8 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     c.vel.z -= c.vel.z * Math.min(1, damp * dt);
     c.pos.x += c.vel.x * dt;
     c.pos.z += c.vel.z * dt;
-    // step off the pier edge -> into the drink
-    if (grounded && !onWalkway(c.pos.x, c.pos.z)) {
-      c.mode = 'water';
-      c.jumpY = 0; c.vy = 0;
-      c.knock = Math.max(c.knock, 0.4);
-      spawnSplash(c.pos.x, c.pos.z, false);
-      toast(c.name + ' walked off the pier!', '#74c0fc');
-      return;
-    }
+    // off the pier edge: onto the boat if it's right there, else straight in
+    if (!onWalkway(c.pos.x, c.pos.z) && exitWalkway(c, grounded)) return;
     const moving = Math.hypot(c.vel.x, c.vel.z) > 0.4;
     c.animMoving = moving && c.knock <= 0;
     let sy = SHORE_Y + c.jumpY;
@@ -308,7 +340,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     // bobbing at the surface; the prone paddling pose is the ragdoll's
     c.mesh.position.set(c.pos.x, 0.18 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);
-    // swim against a pier -> clamber up onto it
+    // swim against a pier -> clamber up onto it (quietly — happens all the time)
     if (c.knock <= 0 && swimming && onWalkway(c.pos.x + mx * 0.7, c.pos.z + mz * 0.7, 0.45)) {
       const w = WALKWAYS.find(ww =>
         c.pos.x + mx * 0.7 > ww.x0 - 0.45 && c.pos.x + mx * 0.7 < ww.x1 + 0.45 &&
@@ -316,9 +348,8 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       c.mode = 'shore';
       c.pos.x = clamp(c.pos.x + mx * 0.7, w.x0 + 0.2, w.x1 - 0.2);
       c.pos.z = clamp(c.pos.z + mz * 0.7, w.z0 + 0.2, w.z1 - 0.2);
-      c.knock = 0.4; c.jumpY = 0; c.vy = 0; c.vel.x = 0; c.vel.z = 0;
+      c.jumpY = 0; c.vy = 0; c.vel.x = 0; c.vel.z = 0;
       spawnSplash(c.pos.x, c.pos.z, false);
-      toast(c.name + ' clambered onto the pier!', '#aef7a2');
       return;
     }
     // climb back up ONLY when deliberately swimming INTO the hull

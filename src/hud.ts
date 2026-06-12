@@ -116,11 +116,11 @@ function drawMiniBoat(t: number) {
 /* =========================== prompts =========================== */
 function stationPromptText(c: Char): string {
   if (c.mode === 'water') {
-    // overboard: point the swimmer back at the boat + leash distance
+    // a quiet swim hint: where the boat is, and that the ladder gets you up
     const dist = Math.hypot(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z);
     const ang = wrapPi(Math.atan2(boat.pos.x - c.pos.x, boat.pos.z - c.pos.z) - c.facing);
-    const dir = Math.abs(ang) < 0.35 ? 'AHEAD — swim into the hull!' : (ang > 0 ? 'to the LEFT' : 'to the RIGHT');
-    return 'OVERBOARD ' + (dist | 0) + 'm / ' + CONFIG.swimLeash + 'm — boat is ' + dir;
+    const dir = Math.abs(ang) < 0.35 ? 'ahead' : (ang > 0 ? 'to the left' : 'to the right');
+    return 'Boat ' + (dist | 0) + 'm ' + dir + ' — swim into the ladder to climb up';
   }
   // everything else comes from the single interact source
   return getInteract(c)?.label ?? '';

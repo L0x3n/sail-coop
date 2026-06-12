@@ -3,11 +3,10 @@ import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
 import { boat, charActive, chars, layout, netDrag, p1 } from './state';
 import { heelGroup } from './shipMesh';
-import { scene } from './scene';
-import { charAxes, localToWorld2, nearestStation, onWalkway, releaseStation, tryToggleStation, worldToLocal2 } from './simChars';
+import { charAxes, localToWorld2, nearestStation, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
-import { nearestCrateFor, pickUp, putDown } from './cargo';
-import { DELIVERY, WALKWAYS } from './world';
+import { anyLashable, lashed, nearestCrateFor, pickUp, putDown, setLashed } from './cargo';
+import { BOARD_SPOT, DELIVERY, ROUTES, SHOP_SPOT, nextUnlockedRoute, routeIdx, setRoute } from './world';
 import { spawnSplash } from './effects';
 import { localDrag } from './input';
 import { toast } from './hud';
@@ -138,38 +137,19 @@ function respawnMop(m: Mop, splashWorld: boolean) {
 export type InteractKind =
   | 'crate-put' | 'crate-deliver' | 'crate-take' | 'crate-fish'
   | 'mop-put' | 'mop-scrub' | 'mop-take'
-  | 'anchor' | 'ashore' | 'aboard'
+  | 'anchor' | 'route' | 'lash' | 'shop'
   | 'station' | 'station-leave' | 'grab-hint';
 
-function nearestWalkwayPoint(wx: number, wz: number): { x: number; z: number; d: number } {
-  let best = { x: 0, z: 0, d: 1e9 };
-  for (const w of WALKWAYS) {
-    const x = clamp(wx, w.x0 + 0.25, w.x1 - 0.25);
-    const z = clamp(wz, w.z0 + 0.25, w.z1 - 0.25);
-    const d = Math.hypot(x - wx, z - wz);
-    if (d < best.d) best = { x, z, d };
-  }
-  return best;
-}
 const anchorSpot = () => ({ x: 0, z: layout.deckZ * 0.88 });
 
 export function getInteract(c: Char): { kind: InteractKind; label: string } | null {
   if (c.grabbedBy >= 0 || c.mode === 'water' || c.knock > 0) return null;
-  // carrying a crate: deliver > board/disembark WITH it > put down
+  // carrying a crate: deliver > put down (boarding/disembarking is just walking now)
   if (c.carry >= 0) {
     if (c.mode === 'shore') {
       const f = headVec(c.facing);
       if (Math.hypot(c.pos.x + f.x * 0.65 - DELIVERY.x, c.pos.z + f.z * 0.65 - DELIVERY.z) < DELIVERY.r) {
         return { kind: 'crate-deliver', label: 'E — DELIVER the crate!' };
-      }
-      if (Math.hypot(c.pos.x - boat.pos.x, c.pos.z - boat.pos.z) < layout.hullL / 2 + 2.6) {
-        return { kind: 'aboard', label: 'E — climb aboard with the crate' };
-      }
-    }
-    if (c.mode === 'deck') {
-      const w = localToWorld2(c.pos);
-      if (nearestWalkwayPoint(w.x, w.z).d < 3.2) {
-        return { kind: 'ashore', label: 'E — step ashore with the crate' };
       }
     }
     return { kind: 'crate-put', label: 'E — put the crate down (F: toss)' };
@@ -182,11 +162,27 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
     }
     return { kind: 'mop-put', label: 'E — put the mop down' };
   }
+  // the chandler's stall (opens a local panel — handled client-side)
+  if (c.mode === 'shore' && Math.hypot(c.pos.x - SHOP_SPOT.x, c.pos.z - SHOP_SPOT.z) < 2.0) {
+    return { kind: 'shop', label: 'E — browse the chandler\'s wares' };
+  }
+  // the route board on the home pier
+  if (c.mode === 'shore' && Math.hypot(c.pos.x - BOARD_SPOT.x, c.pos.z - BOARD_SPOT.z) < 1.8) {
+    const next = ROUTES[nextUnlockedRoute(routeIdx)];
+    return { kind: 'route', label: 'E — route: ' + ROUTES[routeIdx].name + ' (' + ROUTES[routeIdx].pay + 'g/crate) → switch to ' + next.name };
+  }
   // pick something up: crates first, then the mop
   const nc = nearestCrateFor(c);
   if (nc) return nc.fish
     ? { kind: 'crate-fish', label: 'E — fish the crate out!' }
     : { kind: 'crate-take', label: 'E — pick up the crate' };
+  // lash the cargo at the rope coil on the foredeck
+  if (c.mode === 'deck' && anyLashable() &&
+      Math.hypot(c.pos.x - (-0.7 * layout.scale), c.pos.z - 3.1 * layout.scale) < 1.4) {
+    return lashed()
+      ? { kind: 'lash', label: 'E — untie the cargo (full pay, slides again)' }
+      : { kind: 'lash', label: 'E — lash the cargo (-20% pay, no sliding)' };
+  }
   if (c.mode === 'deck' && !c.holding && nearestFreeMop(c, CONFIG.mopPickupR)) {
     return { kind: 'mop-take', label: 'E — pick up the mop' };
   }
@@ -195,15 +191,6 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
     const a = anchorSpot();
     if (Math.hypot(c.pos.x - a.x, c.pos.z - a.z) < 1.7) {
       return { kind: 'anchor', label: boat.anchored ? 'E — raise the anchor' : 'E — drop the anchor' };
-    }
-  }
-  // step ashore / climb aboard
-  if (c.mode === 'deck') {
-    const w = localToWorld2(c.pos);
-    if (nearestWalkwayPoint(w.x, w.z).d < 3.2) return { kind: 'ashore', label: 'E — step ashore' };
-  } else if (c.mode === 'shore') {
-    if (Math.hypot(c.pos.x - boat.pos.x, c.pos.z - boat.pos.z) < layout.hullL / 2 + 2.6) {
-      return { kind: 'aboard', label: 'E — climb aboard' };
     }
   }
   // stations
@@ -260,30 +247,17 @@ export function pressE(c: Char) {
       audio.creak(1);
       break;
     }
-    case 'ashore': {
-      const w = localToWorld2(c.pos);
-      const p = nearestWalkwayPoint(w.x, w.z);
-      heelGroup.remove(c.mesh);
-      scene.add(c.mesh);
-      c.mode = 'shore';
-      c.pos.x = p.x; c.pos.z = p.z;
-      c.facing = wrapPi(c.facing + boat.yaw);
-      c.vel.x = 0; c.vel.z = 0;
-      c.jumpY = 0.25; c.vy = 1.2;
+    case 'route': {
+      setRoute(nextUnlockedRoute(routeIdx));
+      const r = ROUTES[routeIdx];
+      toast('Route: ' + r.name + ' — ' + r.pay + 'g/crate (' + r.desc + ')', '#ffd95e');
       break;
     }
-    case 'aboard': {
-      scene.remove(c.mesh);
-      heelGroup.add(c.mesh);
-      c.mode = 'deck';
-      const lp = worldToLocal2(c.pos);
-      c.pos.x = clamp(lp.x, -layout.deckX + 0.3, layout.deckX - 0.3);
-      c.pos.z = clamp(lp.z, -layout.deckZ + 0.3, layout.deckZ - 0.3);
-      c.facing = wrapPi(c.facing - boat.yaw);
-      c.vel.x = 0; c.vel.z = 0;
-      c.jumpY = 0.25; c.vy = 1.2;
+    case 'shop':
+      break;   // opened locally in handleLocalKeys (each player gets their own panel)
+    case 'lash':
+      setLashed(!lashed());
       break;
-    }
     case 'station':
       tryToggleStation(c);
       break;

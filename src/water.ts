@@ -17,7 +17,8 @@ const WATER_SIZE = 1400;
 /* --- flat water: solid lambert plane with a gentle CPU sine swell --- */
 const flatGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 36, 36);
 flatGeo.rotateX(-Math.PI / 2);
-export const flatWater = new THREE.Mesh(flatGeo, new THREE.MeshLambertMaterial({ color: 0x1f6fb5 }));
+export const flatWater = new THREE.Mesh(flatGeo,
+  new THREE.MeshLambertMaterial({ color: 0x1f6fb5, transparent: true, opacity: 0.86, side: THREE.DoubleSide }));
 scene.add(flatWater);
 const flatBase = (flatGeo.attributes.position.array as Float32Array).slice();
 function updateFlatWater(t: number, cx: number, cz: number) {
@@ -99,9 +100,16 @@ const fancyMat = new THREE.ShaderMaterial({
       float foam = smoothstep(0.40, 0.72, vCrest + foamN * 0.14);
       col = mix(col, vec3(0.93, 0.98, 1.0), foam * 0.8);
       float d = distance(uCamPos, vPos);
-      col = mix(col, uSky, smoothstep(uFogNear, uFogFar, d));
-      gl_FragColor = vec4(col, 1.0);
+      float fogF = smoothstep(uFogNear, uFogFar, d);
+      col = mix(col, uSky, fogF);
+      // see-through straight down (shallows show the seabed), mirror-opaque at a glance
+      float alpha = mix(0.72, 0.97, fres);
+      alpha = mix(alpha, 1.0, foam * 0.8);
+      alpha = mix(alpha, 1.0, fogF);
+      gl_FragColor = vec4(col, alpha);
     }`,
+  transparent: true,
+  side: THREE.DoubleSide,
 });
 const fancyGeo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, 180, 180);
 fancyGeo.rotateX(-Math.PI / 2);

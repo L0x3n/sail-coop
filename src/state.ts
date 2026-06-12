@@ -63,6 +63,8 @@ export const env = {
   windMul: 1,
   swell: 1,                    // wave/bob multiplier (weather x open-sea x AAA water)
   darkness: 0,
+  gustMul: 1,                  // event director: wind gust multiplier
+  bigWave: 0,                  // event director: signed long-swell tilt (-1..1)
 };
 
 /* =========================== game state =========================== */
@@ -102,6 +104,37 @@ export const game = {
   batch: 0,
   batchT: 0,        // seconds spent on the current shipment
 };
+
+/* --- the chaos shop: purchases persist (host's browser owns the save) --- */
+export const owned = {
+  skiff: false,
+  galleon: false,
+  bigDeck: false,
+  chartNorth: false,
+  hatStraw: false,
+  hatFancy: false,
+};
+export const prefs = {
+  ship: 'sloop',
+  hats: ['captain', 'bandana'] as string[],   // per char index
+};
+export function saveProgress() {
+  try {
+    localStorage.setItem('sail.save', JSON.stringify({ gold: game.gold, owned, prefs }));
+  } catch { /* private mode etc */ }
+}
+export function loadProgress() {
+  try {
+    const raw = localStorage.getItem('sail.save');
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (typeof s.gold === 'number') game.gold = s.gold;
+    Object.assign(owned, s.owned ?? {});
+    if (s.prefs?.ship) prefs.ship = s.prefs.ship;
+    if (Array.isArray(s.prefs?.hats)) prefs.hats = s.prefs.hats;
+  } catch { /* corrupt save -> fresh start */ }
+}
+loadProgress();
 
 /* --- net role --- */
 export type NetRole = null | 'host' | 'guest';

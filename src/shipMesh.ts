@@ -171,6 +171,29 @@ export function buildShip(S: number) {
     R.add(sternCap);
   }
 
+  /* ---------------- boarding ladder (starboard quarter, down to the water) ---------------- */
+  {
+    const lz = -1.6 * S;
+    const yBot = -0.4, yTop = DECK_Y + 0.52;
+    const H = yTop - yBot;
+    const ladder = new THREE.Group();
+    for (const dz of [-0.24, 0.24]) {
+      const stile = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, H, 6), woodDark);
+      stile.position.set(0, yBot + H / 2, dz);
+      ladder.add(stile);
+    }
+    const rungN = 2 + Math.round(2.5 * S);
+    for (let i = 0; i < rungN; i++) {
+      const rung = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.055, 0.56), woodPale);
+      rung.position.set(0.03, yBot + 0.16 + (H - 0.42) * (i / (rungN - 1)), 0);
+      ladder.add(rung);
+    }
+    // hangs just off the planking, bottom tucked in with the hull's curve
+    ladder.position.set(beamAt(lz) + 0.1, 0, lz);
+    ladder.rotation.z = -0.12;
+    R.add(ladder);
+  }
+
   /* ---------------- rudder blade ---------------- */
   rudderGroup = new THREE.Group();
   rudderGroup.position.set(0, 0.2, -4.05 * S);
@@ -383,9 +406,10 @@ export function updateBoatVisuals(dt: number, t: number) {
   const swell = env.swell;
   const fwd = headVec(boat.yaw);
   const af = dot2(boat.lastAccel, fwd);
-  heelGroup.rotation.z = -boat.heel + Math.sin(t * 0.8) * CONFIG.bobPitch * swell;
+  heelGroup.rotation.z = -boat.heel + Math.sin(t * 0.8) * CONFIG.bobPitch * swell - env.bigWave * 0.2;
   heelGroup.rotation.x = Math.sin(t * 0.62 + 1) * CONFIG.bobPitch * swell - af * 0.012;
-  heelGroup.position.y = (Math.sin(t * 0.9) * CONFIG.bobAmp + Math.sin(t * 1.7 + 2) * CONFIG.bobAmp * 0.4) * swell;
+  heelGroup.position.y = (Math.sin(t * 0.9) * CONFIG.bobAmp + Math.sin(t * 1.7 + 2) * CONFIG.bobAmp * 0.4) * swell
+    + Math.abs(env.bigWave) * 0.4;
 
   const heelRate = Math.abs(boat.heel - lastHeel) / Math.max(dt, 1e-4);
   lastHeel = boat.heel;

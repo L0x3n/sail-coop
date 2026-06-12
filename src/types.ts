@@ -13,6 +13,7 @@ export interface PirateParts {
   rig: THREE.Group;      // everything; flops/spins as one
   torso: THREE.Group;    // pivots at the hips
   headBone: THREE.Group; // pivots at the neck (face + hat ride along)
+  hatSlot: THREE.Group;  // the hat attaches here (and pops off it)
 }
 
 /* pseudo-ragdoll: every pose channel is a damped spring */
@@ -58,6 +59,7 @@ export interface Char {
   eye?: EyeState;
   rag?: RagState;
   rippleT: number;
+  hat: string;        // current hat style (cosmetic, pops off on knockdowns)
   /* hands: mop + grab/throw + cargo */
   hasMop: boolean;
   grabbedBy: number;  // index of the grabber, -1 = free
@@ -70,21 +72,23 @@ export interface Char {
 /* --- net protocol --- */
 export interface CharSnap {
   x: number; z: number; y: number; f: number; m: CharMode; kn: number; st: Station;
-  gb: number; hm: boolean; sc: number;
+  gb: number; hm: boolean; sc: number; ht: string;
 }
 export interface MopSnap { x: number; z: number; h: number; held: number; thrown: boolean; on: boolean; }
 /* crate states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone */
-export interface CrateSnap { s: number; x: number; z: number; h: number; cr: number; }
+export interface CrateSnap { s: number; x: number; z: number; h: number; cr: number; l: boolean; }
 export interface Snapshot {
   k: 's';
   b: { x: number; z: number; yaw: number; vx: number; vz: number; av: number;
        rud: number; boom: number; heel: number; sf: number; luff: boolean; anc: boolean };
-  w: { a: number; s: number; wid: number; wl: number };
+  w: { a: number; s: number; wid: number; wl: number; bw: number };
   t: number; d: boolean;
   c: CharSnap[];
   m: MopSnap[];   // the mops (boat-local)
   cg: CrateSnap[];
   g: { gold: number; del: number; lost: number };
+  rt: number;     // active route index
+  up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean };
 }
 export type NetMsg =
   | Snapshot
@@ -96,6 +100,9 @@ export type NetMsg =
   | { k: 'fx'; fx: 'unsplat'; id: number }
   | { k: 'f' }                                  // matey pressed the hands key (edge)
   | { k: 'm0' }                                 // matey tapped LMB (whack attempt)
+  | { k: 'buy'; id: string }                    // matey asks the host to buy/equip
+  | { k: 'hat'; id: string }                    // matey picked a hat for themselves
+  | { k: 'boat'; id: string }                   // host switched the hull
   | { k: 'reset' }
   | { k: 'restart?' };
 

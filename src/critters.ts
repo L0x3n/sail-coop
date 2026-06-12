@@ -4,6 +4,7 @@ import { boat, charActive, chars, layout, netRole, splats } from './state';
 import { gulls, scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { spawnDroplets, spawnWake } from './effects';
+import { SHALLOWS } from './world';
 import { toast } from './hud';
 import * as audio from './audio';
 
@@ -100,6 +101,11 @@ const run = {
   drops: [] as { at: number; tx: number; tz: number }[],
 };
 let passTimer = 9;       // first pass comes fairly quickly
+let swarmQueue = 0;      // the event director can send a SWARM
+export function gullSwarm(n: number) {
+  swarmQueue = n;
+  passTimer = Math.min(passTimer, 0.5);
+}
 
 /* falling blobs live in BOAT-LOCAL space so they land exactly on deck */
 interface Blob { mesh: THREE.Mesh; vy: number; active: boolean; }
@@ -192,7 +198,12 @@ function updateBomber(dt: number, t: number) {
   if (netRole !== 'guest') {
     passTimer -= dt;
     if (passTimer <= 0 && !run.active) {
-      passTimer = CONFIG.poopInterval + (Math.random() * 2 - 1) * CONFIG.poopIntervalVar;
+      if (swarmQueue > 0) {
+        swarmQueue--;
+        passTimer = 0.9;                     // the next bomber is right behind
+      } else {
+        passTimer = CONFIG.poopInterval + (Math.random() * 2 - 1) * CONFIG.poopIntervalVar;
+      }
       run.active = true;
       run.t = 0;
       const a = Math.random() * Math.PI * 2;
@@ -395,6 +406,45 @@ function updateFlotsam(dt: number, t: number) {
   }
 }
 
+/* --- shallow-water shoals: little tropical fish circling the sand shelves --- */
+const shoalFish: { mesh: THREE.Group; cx: number; cz: number; r: number; sp: number; ph: number; y: number }[] = [];
+{
+  const cols = [0xffa94d, 0x4dabf7, 0xffd43b, 0x63e6be];
+  SHALLOWS.forEach((sh, si) => {
+    for (let i = 0; i < 4; i++) {
+      const g = new THREE.Group();
+      const mat = new THREE.MeshLambertMaterial({ color: cols[(si + i) % cols.length] });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), mat);
+      body.scale.set(0.7, 0.8, 1.8);
+      g.add(body);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), mat);
+      tail.position.z = -0.2;
+      tail.rotation.x = -Math.PI / 2;
+      g.add(tail);
+      g.traverse(o => { o.userData.noShadow = true; });
+      scene.add(g);
+      shoalFish.push({
+        mesh: g, cx: sh.x, cz: sh.z,
+        r: sh.r + 3 + (i % 3) * 2.4,
+        sp: (0.28 + (i % 2) * 0.14) * ((si + i) % 2 ? 1 : -1),
+        ph: i * 1.7 + si * 0.9,
+        y: -0.7 - (i % 2) * 0.4,
+      });
+    }
+  });
+}
+function updateShoals(t: number) {
+  for (const f of shoalFish) {
+    const a = t * f.sp + f.ph;
+    f.mesh.position.set(
+      f.cx + Math.cos(a) * f.r,
+      f.y + Math.sin(t * 1.3 + f.ph) * 0.12,
+      f.cz + Math.sin(a) * f.r);
+    // nose along the orbit tangent, with a swimmy wiggle
+    f.mesh.rotation.y = -a + (f.sp > 0 ? 0 : Math.PI) + Math.sin(t * 5 + f.ph) * 0.25;
+  }
+}
+
 /* ambient gull cries from the circling birds */
 let cryTimer = 5;
 function updateCries(dt: number) {
@@ -415,4 +465,5 @@ export function updateCritters(dt: number, t: number) {
   updateWhale(dt);
   updateShark(dt);
   updateFlotsam(dt, t);
+  updateShoals(t);
 }

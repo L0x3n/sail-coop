@@ -1,6 +1,11 @@
 import * as THREE from 'three';
+import { DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
-import { charActive, chars } from './state';
+import { charActive, chars, layout } from './state';
+import { scene } from './scene';
+import { heelGroup } from './shipMesh';
+import { localToWorld2, onWalkway } from './simChars';
+import { SHORE_Y } from './world';
 import type { Char, PirateParts, RagChannel, RagState } from './types';
 
 /* ===================================================================
@@ -16,7 +21,7 @@ export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain'
   const M = (c: number) => new THREE.MeshLambertMaterial({ color: c });
   const parts: PirateParts = {
     eyes: [], pupils: [], brows: [], arms: [], legs: [],
-    mouth: null!, rig: null!, torso: null!, headBone: null!,
+    mouth: null!, rig: null!, torso: null!, headBone: null!, hatSlot: null!,
   };
 
   const rig = new THREE.Group();
@@ -84,32 +89,142 @@ export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain'
   mouth.position.set(0, -0.01, 0.275);
   headBone.add(mouth);
   parts.mouth = mouth;
-  if (hatStyle === 'captain') {
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 10), M(hatCol));
-    hat.position.y = 0.40;
-    headBone.add(hat);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.05, 10), M(hatCol));
-    brim.position.y = 0.31;
-    headBone.add(brim);
-    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 6), M(0xf0e040));
-    feather.position.set(0.2, 0.54, 0);
-    feather.rotation.z = -0.5;
-    headBone.add(feather);
-  } else {
-    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 8), M(hatCol));
-    wrap.position.y = 0.24;
-    wrap.scale.y = 0.62;
-    headBone.add(wrap);
-    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), M(hatCol));
-    knot.position.set(0, 0.26, -0.28);
-    headBone.add(knot);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.05), M(hatCol));
-    tail.position.set(0.06, 0.10, -0.34);
-    tail.rotation.z = 0.4;
-    headBone.add(tail);
-  }
+  // the hat lives in a slot so it can pop off and come back
+  const hatSlot = new THREE.Group();
+  headBone.add(hatSlot);
+  parts.hatSlot = hatSlot;
+  hatSlot.add(buildHat(hatStyle, hatCol));
   g.userData.parts = parts;
   return g;
+}
+
+/* ---------------- hats: styles, pop-off physics, homecoming ---------------- */
+export function buildHat(style: string, tint = 0x7a3030): THREE.Group {
+  const g = new THREE.Group();
+  const M = (c: number) => new THREE.MeshLambertMaterial({ color: c });
+  if (style === 'bandana') {
+    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 8), M(tint));
+    wrap.position.y = 0.24; wrap.scale.y = 0.62; g.add(wrap);
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), M(tint));
+    knot.position.set(0, 0.26, -0.28); g.add(knot);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.05), M(tint));
+    tail.position.set(0.06, 0.10, -0.34); tail.rotation.z = 0.4; g.add(tail);
+  } else if (style === 'straw') {
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.05, 12), M(0xd9b86a));
+    brim.position.y = 0.30; g.add(brim);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), M(0xe2c47e));
+    dome.position.y = 0.32; dome.scale.y = 0.55; g.add(dome);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.09, 12), M(0xc0392b));
+    band.position.y = 0.36; g.add(band);
+  } else if (style === 'fancy') {
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.46, 0.26, 10), M(0x2b2b3d));
+    hat.position.y = 0.42; g.add(hat);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.05, 10), M(0x2b2b3d));
+    brim.position.y = 0.31; g.add(brim);
+    const trim = new THREE.Mesh(new THREE.TorusGeometry(0.57, 0.025, 6, 14), M(0xffd43b));
+    trim.position.y = 0.33; trim.rotation.x = Math.PI / 2; g.add(trim);
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.42, 6), M(0xe8443a));
+    feather.position.set(0.24, 0.6, 0); feather.rotation.z = -0.55; g.add(feather);
+  } else {                                   // 'captain' (default)
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 10), M(tint));
+    hat.position.y = 0.40; g.add(hat);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.05, 10), M(tint));
+    brim.position.y = 0.31; g.add(brim);
+    const feather = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 6), M(0xf0e040));
+    feather.position.set(0.2, 0.54, 0); feather.rotation.z = -0.5; g.add(feather);
+  }
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  return g;
+}
+
+interface HatProp {
+  state: 0 | 1 | 2 | 3;   // 0 on head · 1 flying · 2 resting on deck · 3 floating
+  x: number; z: number; h: number;
+  vx: number; vz: number; vy: number;
+  mesh: THREE.Group;
+}
+const hatProps = new Map<Char, HatProp>();
+
+export function setHat(c: Char, style: string) {
+  c.hat = style;
+  const P = c.mesh.userData.parts as PirateParts | undefined;
+  if (!P) return;
+  const prop = hatProps.get(c);
+  const old = prop?.mesh ?? (P.hatSlot.children[0] as THREE.Group | undefined);
+  if (old) {
+    old.parent?.remove(old);
+    old.traverse(o => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose(); });
+  }
+  hatProps.delete(c);
+  P.hatSlot.add(buildHat(style, c.name === 'P1' ? 0x7a3030 : 0x445522));
+}
+
+function popHat(c: Char) {
+  const P = c.mesh.userData.parts as PirateParts | undefined;
+  if (!P || hatProps.has(c)) return;
+  const hat = P.hatSlot.children[0] as THREE.Group | undefined;
+  if (!hat) return;
+  P.hatSlot.remove(hat);
+  const onBoat = c.mode === 'deck';
+  (onBoat ? heelGroup : scene).add(hat);
+  hatProps.set(c, {
+    state: 1,
+    x: c.pos.x + (Math.random() - 0.5) * 0.3,
+    z: c.pos.z + (Math.random() - 0.5) * 0.3,
+    h: 1.6,
+    vx: c.vel.x * 0.4 + (Math.random() - 0.5) * 2.5,
+    vz: c.vel.z * 0.4 + (Math.random() - 0.5) * 2.5,
+    vy: 2.2 + Math.random() * 1.5,
+    mesh: hat,
+  });
+}
+
+/* runs on host AND guest — pure cosmetics, converges via the owner walking close */
+export function updateHats(dt: number, t: number) {
+  for (const [c, p] of hatProps) {
+    const onBoat = p.mesh.parent === heelGroup;
+    if (p.state === 1) {
+      p.vy -= 9 * dt;
+      p.x += p.vx * dt;
+      p.z += p.vz * dt;
+      p.h = Math.max(0, p.h + p.vy * dt);
+      if (p.h <= 0) {
+        if (onBoat && (Math.abs(p.x) > layout.deckX + 0.3 || Math.abs(p.z) > layout.deckZ + 0.3)) {
+          // sailed off the deck -> splash into the world
+          const w = localToWorld2(p);
+          heelGroup.remove(p.mesh);
+          scene.add(p.mesh);
+          p.x = w.x; p.z = w.z;
+          p.state = 3;
+        } else if (!onBoat && !onWalkway(p.x, p.z)) {
+          p.state = 3;
+        } else {
+          p.state = 2;
+        }
+      }
+      p.mesh.position.set(p.x, (onBoat ? DECK_Y : SHORE_Y) + p.h + 0.05, p.z);
+      p.mesh.rotation.x += dt * 6;
+    } else if (p.state === 2) {
+      p.mesh.position.set(p.x, (onBoat ? DECK_Y : SHORE_Y) + 0.04, p.z);
+      p.mesh.rotation.set(0.4, p.mesh.rotation.y, 0.15);
+    } else {
+      p.mesh.position.set(p.x, 0.1 + Math.sin(t * 1.5 + p.x) * 0.06, p.z);
+      p.mesh.rotation.set(0.1, p.mesh.rotation.y + dt * 0.3, 0);
+    }
+    // homecoming: the owner walks (or swims) close enough
+    let dist = 1e9;
+    if (onBoat && c.mode === 'deck') dist = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
+    else if (!onBoat && c.mode !== 'deck') dist = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
+    else if (!onBoat && c.mode === 'deck') { const w = localToWorld2(c.pos); dist = Math.hypot(w.x - p.x, w.z - p.z); }
+    if (p.state !== 1 && dist < 0.95) {
+      p.mesh.parent?.remove(p.mesh);
+      const P = c.mesh.userData.parts as PirateParts;
+      p.mesh.position.set(0, 0, 0);
+      p.mesh.rotation.set(0, 0, 0);
+      P.hatSlot.add(p.mesh);
+      hatProps.delete(c);
+    }
+  }
 }
 
 /* ---------------- spring machinery ---------------- */
@@ -161,6 +276,7 @@ export function animateChar(c: Char, dt: number, t: number) {
     rag.legL.v += (Math.random() - 0.5) * 12;
     rag.legR.v += (Math.random() - 0.5) * 12;
     // (no cartwheels — flops only)
+    if (c.mode !== 'water') popHat(c);   // the hat takes its own trip
   }
   rag.wasKnocked = knocked;
 

@@ -1,9 +1,11 @@
 import Peer, { DataConnection } from 'peerjs';
 import { BOATS, DECK_Y } from './config';
-import { SHORE_Y } from './world';
+import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, env, game, myChar, netDrag, p1, p2, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { boat, chars, env, game, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
+import { equipHat, setShipRelay, tryBuy } from './shop';
+import { setHat } from './pirates';
 import { setBoatPreset } from './shipMesh';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
 import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
@@ -38,6 +40,7 @@ setFxRelay(
   (id, x, z) => { if (netRole === 'host') netSend({ k: 'fx', fx: 'poop', id, x, z }); },
   id => { if (netRole === 'host') netSend({ k: 'fx', fx: 'unsplat', id }); },
 );
+setShipRelay(id => { if (netRole === 'host') netSend({ k: 'boat', id }); });
 
 let chosenBoat: BoatPreset = BOATS[1];
 
@@ -130,6 +133,10 @@ export function hostOnData(m: NetMsg) {
     handsEdge(p2);
   } else if (m.k === 'm0') {
     mopTap(p2);
+  } else if (m.k === 'buy') {
+    tryBuy(m.id);
+  } else if (m.k === 'hat') {
+    equipHat(1, m.id);
   } else if (m.k === 'restart?') {
     resetState();
     resetHands(guestHere);
@@ -167,6 +174,10 @@ export function guestOnData(m: NetMsg) {
     return;
   }
   if (m.k === 'toast') { toast(m.x, m.col); return; }
+  if (m.k === 'boat') {
+    setBoatPreset(BOATS.find(b => b.id === m.id) ?? BOATS[1]);
+    return;
+  }
   if (m.k === 'fx') {
     if (m.fx === 'poop') placeSplat(m.id, m.x, m.z);
     else removeSplat(m.id);
@@ -185,6 +196,16 @@ export function applySnapshot(m: Snapshot) {
   game.gold = m.g.gold; game.delivered = m.g.del; game.lost = m.g.lost;
   wind.angle = m.w.a; wind.strength = m.w.s;
   if (m.w.wid !== env.weatherId) { env.weatherId = (m.w.wid as 0 | 1 | 2) ?? 0; env.weatherLerp = 0; }
+  env.bigWave = m.w.bw ?? 0;
+  if (m.rt !== routeIdx) setRoute(m.rt);
+  if (m.up) {
+    owned.bigDeck = m.up.bd;
+    owned.chartNorth = m.up.ch;
+    owned.skiff = m.up.sk;
+    owned.galleon = m.up.gl;
+    owned.hatStraw = m.up.hs;
+    owned.hatFancy = m.up.hf;
+  }
   session.runTime = m.t;
   if (m.d && !session.docked) showDocked(fmtTime(m.t));
   session.docked = m.d;
@@ -222,6 +243,7 @@ export function applySnapshot(m: Snapshot) {
       c.pos.x = cm.x; c.pos.z = cm.z;                   // snap: coordinate space changed
     }
     c.knock = cm.kn; c.station = cm.st;
+    if (cm.ht && cm.ht !== c.hat) setHat(c, cm.ht);
     if (c !== myChar() && typeof cm.f === 'number') c.facing = cm.f;
   });
 }
@@ -288,13 +310,15 @@ export function hostNetStep(dt: number) {
     b: { x: boat.pos.x, z: boat.pos.z, yaw: boat.yaw, vx: boat.vel.x, vz: boat.vel.z, av: boat.angVel,
          rud: boat.rudder, boom: boat.boomAngle, heel: boat.heel, sf: boat.sailForce, luff: boat.luffing,
          anc: boat.anchored },
-    w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp },
+    w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp, bw: env.bigWave },
     t: session.runTime, d: session.docked,
     cg: cargoSnap(),
     g: { gold: game.gold, del: game.delivered, lost: game.lost },
+    rt: routeIdx,
+    up: { bd: owned.bigDeck, ch: owned.chartNorth, sk: owned.skiff, gl: owned.galleon, hs: owned.hatStraw, hf: owned.hatFancy },
     c: chars.map(c => ({
       x: c.pos.x, z: c.pos.z, y: c.jumpY, f: c.facing, m: c.mode, kn: c.knock, st: c.station,
-      gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT,
+      gb: c.grabbedBy, hm: c.hasMop, sc: c.scrubT, ht: c.hat,
     })),
     m: mops.map(mp => ({ x: mp.x, z: mp.z, h: mp.h, held: mp.held, thrown: mp.thrown, on: mp.on })),
   });
@@ -303,6 +327,8 @@ export function hostNetStep(dt: number) {
 export function sendGrab() { netSend({ k: 'g' }); }
 export function sendHandsEdge() { netSend({ k: 'f' }); }
 export function sendMopTap() { netSend({ k: 'm0' }); }
+export function sendBuy(id: string) { netSend({ k: 'buy', id }); }
+export function sendHat(id: string) { netSend({ k: 'hat', id }); }
 
 export function requestRestart() {
   if (netRole === 'guest') { netSend({ k: 'restart?' }); return; }   // ask the host

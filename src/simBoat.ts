@@ -3,6 +3,7 @@ import { D2R, R2D, clamp, dot2, headVec, lerp, len2, rightVec, smoothstep, wrapP
 import { boat, charActive, chars, env, layout, session, tuning, wind } from './state';
 import { PIERS, obstacles } from './world';
 import { releaseStation } from './simChars';
+import { snapLashings } from './cargo';
 import { toast } from './hud';
 
 /* =========================== wind =========================== */
@@ -11,7 +12,8 @@ export function updateWind(dt: number, t: number) {
   const drift = Math.sin(t * 0.10) * 0.6 + Math.sin(t * 0.037 + 2.1) * 0.4;
   const wanderMul = env.weatherId === 2 ? 2.2 : 1;     // squalls swing the wind around
   wind.angle = wrapPi(wind.angle + drift * CONFIG.windWander * wanderMul * D2R * dt);
-  wind.strength = CONFIG.windStrength * env.windMul * (1 + CONFIG.windStrengthWobble * Math.sin(t * 0.13 + 1));
+  wind.strength = CONFIG.windStrength * env.windMul * env.gustMul
+    * (1 + CONFIG.windStrengthWobble * Math.sin(t * 0.13 + 1));
 }
 
 /* =========================== sailing physics (2D horizontal plane) =========================== */
@@ -114,6 +116,7 @@ function collideBoat() {
       if (impact > CONFIG.hardHitSpeed) {
         session.shake = Math.min(1.2, impact * 0.16);
         toast('CRASH!', '#ff8787');
+        snapLashings();                       // one hard hit voids the insurance
         // knock everyone down + hurl them (in boat-local space, away from impact)
         const rgt = rightVec(boat.yaw), fwdv = headVec(boat.yaw);
         const lx = nx * rgt.x + nz * rgt.z, lz = nx * fwdv.x + nz * fwdv.z;

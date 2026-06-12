@@ -200,6 +200,19 @@ syfte), kraken-tentakel som bonkas med moppen.
 
 ---
 
+## Teknisk backlog (för senare — rör inte kärnloopen)
+
+- **FFT-vatten**: byt Gerstner-stacken mot en Fast Fourier Transform-baserad
+  vågsimulering (à la Sea of Thieves), **synkroniserad mellan CPU (fysik)
+  och GPU (grafik)** så att båt/last/karaktärer kan läsa exakt samma våghöjd
+  som syns på skärmen. **Chunk-baserad** så havet kan vara stort utan att
+  hela ytan simuleras varje frame. Kräver: vågspektrum (Phillips/JONSWAP),
+  IFFT på GPU (eller WASM på CPU + textur-upload), höjdsampling per chunk
+  för fysiken, LOD per chunk-avstånd. Stort jobb — görs som egen fas när
+  rundloopen är bevisad, och ALLTID med flat-vatten-fallback kvar på Q.
+
+---
+
 ## Fas 5 — Skala & utsläpp
 
 - Deploy till URL (GitHub Pages) så ingen skickar filer.
