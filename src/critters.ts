@@ -388,45 +388,10 @@ const flotsam: { mesh: THREE.Mesh; ph: number }[] = [];
     flotsam.push({ mesh, ph: i * 1.7 });
   });
 }
-const NOTES = [
-  '"Red skies at night..." — the rest is too soggy to read',
-  'A treasure map! ...of a completely different ocean.',
-  '"SEND MORE LIMES" — signed, the previous crew',
-];
-const bottles: { mesh: THREE.Group; cd: number; note: string }[] = [];
-{
-  const glass = new THREE.MeshLambertMaterial({ color: 0x7dc4a7 });
-  const cork = new THREE.MeshLambertMaterial({ color: 0xc8a06a });
-  [[12, -64], [-26, -132], [9, -188]].forEach(([x, z], i) => {
-    const g = new THREE.Group();
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), glass);
-    g.add(b);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 6), cork);
-    neck.position.y = 0.32;
-    g.add(neck);
-    g.position.set(x, 0.08, z);
-    g.rotation.z = Math.PI / 2.4;
-    g.traverse(o => { o.userData.noShadow = true; });
-    scene.add(g);
-    bottles.push({ mesh: g, cd: 0, note: NOTES[i % NOTES.length] });
-  });
-}
-
 function updateFlotsam(dt: number, t: number) {
   for (const f of flotsam) {
     f.mesh.position.y = 0.08 + Math.sin(t * 1.1 + f.ph) * 0.07;
     f.mesh.rotation.y += dt * 0.06;
-  }
-  for (const bo of bottles) {
-    bo.cd -= dt;
-    bo.mesh.position.y = 0.06 + Math.sin(t * 1.4 + bo.mesh.position.x) * 0.06;
-    bo.mesh.rotation.y += dt * 0.2;
-    if (netRole !== 'guest' && bo.cd <= 0 &&
-        Math.hypot(bo.mesh.position.x - boat.pos.x, bo.mesh.position.z - boat.pos.z) < 6) {
-      bo.cd = 150;
-      audio.fishPlop();
-      toast('Message in a bottle: ' + bo.note, '#7dc4a7');
-    }
   }
 }
 

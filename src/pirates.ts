@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
+import { charActive, chars } from './state';
 import type { Char, PirateParts, RagChannel, RagState } from './types';
 
 /* ===================================================================
@@ -127,6 +128,8 @@ function spr(c: RagChannel, target: number, k: number, d: number, dt: number): n
   c.a += c.v * dt;
   return c.a;
 }
+const _stareW = new THREE.Vector3();
+const _stareL = new THREE.Vector3();
 
 /* per-frame goofy life: spring-driven poses, lagging googly pupils, blinks */
 export function animateChar(c: Char, dt: number, t: number) {
@@ -226,6 +229,10 @@ export function animateChar(c: Char, dt: number, t: number) {
       tLegL = Math.sin(c.walkPhase + Math.PI) * 0.6;
       tLegR = Math.sin(c.walkPhase) * 0.6;
     }
+    if (c.hasMop) {                              // right hand carries the mop upright
+      tArmRX = -0.55;
+      tArmRZ = -0.32;
+    }
   }
 
   /* run the springs */
@@ -252,13 +259,25 @@ export function animateChar(c: Char, dt: number, t: number) {
   }
   P.rig.rotation.x = rag.spin;
 
-  /* googly pupils on a loose spring (unchanged charm) */
+  /* googly pupils on a loose spring — they STARE at the nearest other pirate */
   const e = (c.eye ??= { px: 0, py: 0, vx: 0, vy: 0, pvx: 0, pvz: 0, blink: 2 + Math.random() * 3, blinkT: 0 });
+  let stareX = Math.sin(t * 0.7 + c.pos.x) * 0.012;        // idle wander when alone
+  let stareY = Math.cos(t * 0.5 + c.pos.z) * 0.008;
+  const other = chars.find(o => o !== c && charActive(o) && o.mesh.visible);
+  if (other) {
+    _stareW.set(0, 1.3, 0);
+    other.mesh.localToWorld(_stareW);                       // their head, in world
+    _stareL.copy(_stareW);
+    c.mesh.worldToLocal(_stareL);                           // ...seen from my face
+    const rel = Math.atan2(_stareL.x, _stareL.z);
+    stareX = clamp(Math.sin(rel) * 0.07, -0.042, 0.042);
+    stareY = clamp((_stareL.y - 1.35) * 0.012, -0.03, 0.03);
+  }
   const axw = clamp((c.vel.x - e.pvx) / Math.max(dt, 1e-4), -25, 25);
   const azw = clamp((c.vel.z - e.pvz) / Math.max(dt, 1e-4), -25, 25);
   e.pvx = c.vel.x; e.pvz = c.vel.z;
-  e.vx += (-axw * 0.004 + Math.sin(t * 1.3 + c.pos.z) * 0.0015 - e.px * 90 - e.vx * 8) * dt;
-  e.vy += (-azw * 0.002 + Math.cos(t * 0.9 + c.pos.x) * 0.0015 - e.py * 90 - e.vy * 8) * dt;
+  e.vx += (-axw * 0.004 + (stareX - e.px) * 90 - e.vx * 8) * dt;
+  e.vy += (-azw * 0.002 + (stareY - e.py) * 90 - e.vy * 8) * dt;
   e.px = clamp(e.px + e.vx * dt, -0.042, 0.042);
   e.py = clamp(e.py + e.vy * dt, -0.035, 0.035);
   e.blink -= dt;

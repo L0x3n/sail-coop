@@ -365,28 +365,36 @@ export function updateHands(dt: number) {
   }
 }
 
-/* visuals for both mops, host AND guest (guest gets mop state from snapshots) */
+/* visuals for both mops, host AND guest (guest gets mop state from snapshots).
+   A held mop is PARENTED to the carrier's right arm, so it rides every arm
+   swing, scrub stroke and ragdoll flail for free. */
 export function updateMopVisual(t: number) {
   for (const m of mops) {
     m.mesh.visible = m.on;
     m.bucket.visible = m.on;
     if (!m.on) continue;
-    if (m.thrown) {
-      m.mesh.position.set(m.x, DECK_Y + m.h, m.z);
-      m.mesh.rotation.set(t * 14 % (Math.PI * 2), Math.atan2(m.vx, m.vz), 0);
-    } else if (m.held >= 0) {
-      const c = chars[m.held];
-      const f = headVec(c.facing);
-      const scrub = c.scrubT > 0 ? Math.sin(t * 16) * 0.25 : 0;
-      m.mesh.position.set(
-        c.pos.x + f.x * 0.42 + scrub * Math.cos(c.facing) * 0.4,
-        DECK_Y + (c.scrubT > 0 ? 0.02 : 0.18),
-        c.pos.z + f.z * 0.42 - scrub * Math.sin(c.facing) * 0.4);
-      m.mesh.rotation.set(c.scrubT > 0 ? 0.9 : 0.35, c.facing, 0);
+    const holder = m.held >= 0 ? chars[m.held] : null;
+    const hand = holder?.mesh.userData.parts?.arms?.[1] as THREE.Mesh | undefined;
+    if (holder && hand) {
+      if (m.mesh.parent !== hand) {
+        hand.add(m.mesh);
+        m.mesh.position.set(0.07, -0.5, 0.13);     // in the fist, head down by the deck
+      }
+      const scrub = holder.scrubT > 0;
+      m.mesh.rotation.set(
+        scrub ? 0.95 : 0.5,
+        0.12,
+        -0.3 + (scrub ? Math.sin(t * 16) * 0.22 : 0));
     } else {
-      const atBucket = Math.hypot(m.x - m.bucket.position.x, m.z - m.bucket.position.z) < 0.2;
-      m.mesh.position.set(m.x, DECK_Y + (atBucket ? 0.26 : 0.05), m.z);
-      m.mesh.rotation.set(atBucket ? 0.12 : Math.PI / 2 - 0.08, 0.6 + (atBucket ? 0 : 0.8), 0);
+      if (m.mesh.parent !== heelGroup) heelGroup.add(m.mesh);
+      if (m.thrown) {
+        m.mesh.position.set(m.x, DECK_Y + m.h, m.z);
+        m.mesh.rotation.set(t * 14 % (Math.PI * 2), Math.atan2(m.vx, m.vz), 0);
+      } else {
+        const atBucket = Math.hypot(m.x - m.bucket.position.x, m.z - m.bucket.position.z) < 0.2;
+        m.mesh.position.set(m.x, DECK_Y + (atBucket ? 0.26 : 0.05), m.z);
+        m.mesh.rotation.set(atBucket ? 0.12 : Math.PI / 2 - 0.08, 0.6 + (atBucket ? 0 : 0.8), 0);
+      }
     }
   }
 }
