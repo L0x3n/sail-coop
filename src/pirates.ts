@@ -16,9 +16,30 @@ import type { Char, PirateParts, RagChannel, RagState } from './types';
    Every pose channel runs through a damped spring, so knockdowns,
    mop-bonks, throws and carries all FLOP. Gang Beasts rules.
    =================================================================== */
+
+/* ---- the cartoon look: a stepped light ramp (toon shading) + dark ink
+   outlines on the big shapes (a back-face shell, the classic cheap outline) ---- */
+const TOON_RAMP = (() => {
+  const lv = [70, 140, 200, 255];                       // 4 flat brightness bands
+  const data = new Uint8Array(lv.length * 4);
+  lv.forEach((v, i) => { data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; });
+  const tx = new THREE.DataTexture(data, lv.length, 1, THREE.RGBAFormat);
+  tx.minFilter = THREE.NearestFilter; tx.magFilter = THREE.NearestFilter; tx.needsUpdate = true;
+  return tx;
+})();
+const toonMat = (color: number) => new THREE.MeshToonMaterial({ color, gradientMap: TOON_RAMP });
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x140f0c, side: THREE.BackSide });
+function inkOutline(mesh: THREE.Mesh, s = 1.07) {
+  const o = new THREE.Mesh(mesh.geometry, OUTLINE_MAT);
+  o.scale.setScalar(s);
+  o.castShadow = false;
+  o.userData.noShadow = true;
+  mesh.add(o);                                          // child → rides the part through every pose
+}
+
 export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain' | 'bandana'): THREE.Group {
   const g = new THREE.Group();
-  const M = (c: number) => new THREE.MeshLambertMaterial({ color: c });
+  const M = toonMat;
   const parts: PirateParts = {
     eyes: [], pupils: [], brows: [], arms: [], legs: [],
     mouth: null!, rig: null!, torso: null!, headBone: null!, hatSlot: null!,
@@ -68,15 +89,15 @@ export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain'
   head.position.y = 0.14;
   headBone.add(head);
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.105, 10, 8), M(0xffffff));
-    eye.position.set(sx * 0.115, 0.22, 0.235);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.128, 12, 10), M(0xffffff));
+    eye.position.set(sx * 0.13, 0.22, 0.245);
     headBone.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), M(0x14100c));
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.058, 10, 8), M(0x14100c));
     pupil.position.set(0, 0, 0.075);
     eye.add(pupil);
     parts.eyes.push(eye); parts.pupils.push(pupil);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.04), M(0x4a2c18));
-    brow.position.set(sx * 0.115, 0.35, 0.26);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.038, 0.04), M(0x4a2c18));
+    brow.position.set(sx * 0.13, 0.36, 0.27);
     brow.rotation.z = sx * -0.28;
     headBone.add(brow);
     parts.brows.push(brow);
@@ -94,6 +115,34 @@ export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain'
   headBone.add(hatSlot);
   parts.hatSlot = hatSlot;
   hatSlot.add(buildHat(hatStyle, hatCol));
+
+  // --- pirate outfit ---
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.05), M(0xffd24a));
+  buckle.position.set(0, 0.03, 0.345); torso.add(buckle);              // gold belt buckle (everyone)
+  if (hatStyle === 'bandana') {
+    for (const sy of [0.05, 0.2, 0.35]) {                              // sailor stripes
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.348, 0.348, 0.075, 16, 1, true), M(0xf2f0e6));
+      st.position.y = sy; torso.add(st);
+    }
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(0.115, 16), M(0x120d0a));   // eye patch over the left eye
+    patch.position.set(-0.13, 0.22, 0.305); headBone.add(patch);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.52, 0.04), M(0x120d0a));
+    strap.position.set(-0.04, 0.31, 0.28); strap.rotation.z = 0.62; headBone.add(strap);
+  } else {                                                             // captain's coat lapels + sash
+    for (const sx of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.52, 0.06), M(0x5a2c1c));
+      lapel.position.set(sx * 0.17, 0.2, 0.30); lapel.rotation.z = sx * 0.1; torso.add(lapel);
+    }
+    const sash = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.82, 0.05), M(0xc23a2a));
+    sash.position.set(0, 0.2, 0.31); sash.rotation.z = 0.55; torso.add(sash);
+  }
+
+  // --- ink outlines on the big silhouette shapes (thin parts need a wider shell) ---
+  inkOutline(body, 1.07);
+  inkOutline(head, 1.07);
+  for (const a of parts.arms) inkOutline(a, 1.13);
+  for (const l of parts.legs) inkOutline(l, 1.13);
+
   g.userData.parts = parts;
   return g;
 }
@@ -101,35 +150,35 @@ export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain'
 /* ---------------- hats: styles, pop-off physics, homecoming ---------------- */
 export function buildHat(style: string, tint = 0x7a3030): THREE.Group {
   const g = new THREE.Group();
-  const M = (c: number) => new THREE.MeshLambertMaterial({ color: c });
+  const M = toonMat;
   if (style === 'bandana') {
     const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 8), M(tint));
-    wrap.position.y = 0.24; wrap.scale.y = 0.62; g.add(wrap);
+    wrap.position.y = 0.24; wrap.scale.y = 0.62; inkOutline(wrap, 1.08); g.add(wrap);
     const knot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), M(tint));
     knot.position.set(0, 0.26, -0.28); g.add(knot);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.05), M(tint));
     tail.position.set(0.06, 0.10, -0.34); tail.rotation.z = 0.4; g.add(tail);
   } else if (style === 'straw') {
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.05, 12), M(0xd9b86a));
-    brim.position.y = 0.30; g.add(brim);
+    brim.position.y = 0.30; inkOutline(brim, 1.05); g.add(brim);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), M(0xe2c47e));
     dome.position.y = 0.32; dome.scale.y = 0.55; g.add(dome);
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.09, 12), M(0xc0392b));
     band.position.y = 0.36; g.add(band);
   } else if (style === 'fancy') {
     const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.46, 0.26, 10), M(0x2b2b3d));
-    hat.position.y = 0.42; g.add(hat);
+    hat.position.y = 0.42; inkOutline(hat, 1.06); g.add(hat);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.05, 10), M(0x2b2b3d));
-    brim.position.y = 0.31; g.add(brim);
+    brim.position.y = 0.31; inkOutline(brim, 1.05); g.add(brim);
     const trim = new THREE.Mesh(new THREE.TorusGeometry(0.57, 0.025, 6, 14), M(0xffd43b));
     trim.position.y = 0.33; trim.rotation.x = Math.PI / 2; g.add(trim);
     const feather = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.42, 6), M(0xe8443a));
     feather.position.set(0.24, 0.6, 0); feather.rotation.z = -0.55; g.add(feather);
   } else {                                   // 'captain' (default)
     const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.22, 10), M(tint));
-    hat.position.y = 0.40; g.add(hat);
+    hat.position.y = 0.40; inkOutline(hat, 1.06); g.add(hat);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.05, 10), M(tint));
-    brim.position.y = 0.31; g.add(brim);
+    brim.position.y = 0.31; inkOutline(brim, 1.05); g.add(brim);
     const feather = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 6), M(0xf0e040));
     feather.position.set(0.2, 0.54, 0); feather.rotation.z = -0.5; g.add(feather);
   }
