@@ -63,6 +63,23 @@ registerChars(
 buildWorld();
 enableShadows([flatWater, fancyWaterMesh, fftWaterMesh, skyDome]);
 
+/* Precompile EVERY shader up front. Otherwise the first time a new material/
+   effect appears mid-play (stars at dusk, a splash, rain, a crate, the toon
+   pirates, a water-mode switch) Three.js compiles its program synchronously —
+   a ~300ms hitch. We force every mesh/points/sprite visible, compile + render
+   one throwaway frame behind the menu, then restore visibility. */
+function warmUpShaders() {
+  const rehide: { visible: boolean }[] = [];
+  scene.traverse((o: any) => {
+    if ((o.isMesh || o.isPoints || o.isSprite || o.isLine) && o.visible === false) {
+      o.visible = true; rehide.push(o);
+    }
+  });
+  try { renderer.compile(scene, cam1); renderer.render(scene, cam1); } catch { /* ignore */ }
+  for (const o of rehide) o.visible = false;
+}
+warmUpShaders();
+
 /* =========================== input edge handling =========================== */
 function handleLocalKeys() {
   while (pressedQueue.length) {
