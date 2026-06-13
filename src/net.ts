@@ -18,7 +18,7 @@ import { applyAspect, scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { animateChar } from './pirates';
 import { spawnSplash, spawnWake } from './effects';
-import { releaseStation, resetState, localToWorld2 } from './simChars';
+import { groundAt, releaseStation, resetState, localToWorld2 } from './simChars';
 import { v2 } from './mathUtil';
 import { modeSelEl, netChipEl, netStatusEl, setToastRelay, showDocked, toast } from './hud';
 import type { CharSnap, NetMsg, Snapshot } from './types';
@@ -305,7 +305,7 @@ export function guestStep(dt: number) {
       c.mesh.position.set(c.pos.x, y, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);   // posture comes from the ragdoll rig
     } else if (c.mode === 'shore') {
-      let y = SHORE_Y + c.jumpY;
+      let y = (groundAt(c.pos.x, c.pos.z) ?? SHORE_Y) + c.jumpY;
       if (mv && c.jumpY < 0.01 && c.knock <= 0) y += Math.abs(Math.sin(c.walkPhase)) * 0.09;
       c.mesh.position.set(c.pos.x, y, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);

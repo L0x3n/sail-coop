@@ -6,12 +6,19 @@ import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
 import { heelGroup } from './shipMesh';
 import { scene } from './scene';
-import { SHORE_Y, WALKWAYS, obstacles } from './world';
+import { LANDS, SHORE_Y, WALKWAYS, landBlockers, obstacles } from './world';
 import { toast } from './hud';
 import type { Axes, Char } from './types';
 
 export const onWalkway = (x: number, z: number, pad = 0.15) =>
   WALKWAYS.some(w => x > w.x0 - pad && x < w.x1 + pad && z > w.z0 - pad && z < w.z1 + pad);
+
+/* the walk height at a spot — a pier, an island beach, or null (open water) */
+export function groundAt(x: number, z: number): number | null {
+  if (onWalkway(x, z)) return SHORE_Y;
+  for (const L of LANDS) if (Math.hypot(x - L.x, z - L.z) < L.r) return L.y;
+  return null;
+}
 
 /* ============ boat-local <-> world transforms ============ */
 export function localToWorld2(p: { x: number; z: number }) {
@@ -302,11 +309,17 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     c.vel.z -= c.vel.z * Math.min(1, damp * dt);
     c.pos.x += c.vel.x * dt;
     c.pos.z += c.vel.z * dt;
-    // off the pier edge: onto the boat if it's right there, else straight in
-    if (!onWalkway(c.pos.x, c.pos.z) && exitWalkway(c, grounded)) return;
+    // can't walk through hills, houses or the lighthouse
+    for (const o of landBlockers) {
+      const dx = c.pos.x - o.x, dz = c.pos.z - o.z, dd = Math.hypot(dx, dz);
+      if (dd < o.r && dd > 0) { c.pos.x = o.x + dx / dd * o.r; c.pos.z = o.z + dz / dd * o.r; c.vel.x *= 0.4; c.vel.z *= 0.4; }
+    }
+    // left all walkable ground (pier OR island)? board the boat if alongside, else into the drink
+    const g = groundAt(c.pos.x, c.pos.z);
+    if (g === null && exitWalkway(c, grounded)) return;
     const moving = Math.hypot(c.vel.x, c.vel.z) > 0.4;
     c.animMoving = moving && c.knock <= 0;
-    let sy = SHORE_Y + c.jumpY;
+    let sy = (g ?? SHORE_Y) + c.jumpY;
     if (moving && grounded && c.knock <= 0) sy += Math.abs(Math.sin(c.walkPhase)) * 0.09;
     c.mesh.position.set(c.pos.x, sy, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);
@@ -333,7 +346,19 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     c.vel.z -= c.vel.z * Math.min(1, 3.0 * dt);
     c.pos.x += c.vel.x * dt;
     c.pos.z += c.vel.z * dt;
-    // can't swim through rocks or the island
+    // swim into a pier or beach and clamber up (checked BEFORE the island
+    // push-out, with a long reach, so you can actually reach the sand)
+    if (c.knock <= 0 && swimming) {
+      const ax2 = c.pos.x + mx * 2.8, az2 = c.pos.z + mz * 2.8;
+      if (groundAt(ax2, az2) !== null) {
+        c.mode = 'shore';
+        c.pos.x = ax2; c.pos.z = az2;
+        c.jumpY = 0; c.vy = 0; c.vel.x = 0; c.vel.z = 0;
+        spawnSplash(c.pos.x, c.pos.z, false);
+        return;
+      }
+    }
+    // can't swim through rocks or the island bodies
     for (const o of obstacles) {
       const dx = c.pos.x - o.x, dz = c.pos.z - o.z, dd = Math.hypot(dx, dz);
       const rr = o.r - 1.2;
@@ -354,18 +379,6 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     // bobbing at the surface; the prone paddling pose is the ragdoll's
     c.mesh.position.set(c.pos.x, 0.18 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);
-    // swim against a pier -> clamber up onto it (quietly — happens all the time)
-    if (c.knock <= 0 && swimming && onWalkway(c.pos.x + mx * 0.7, c.pos.z + mz * 0.7, 0.45)) {
-      const w = WALKWAYS.find(ww =>
-        c.pos.x + mx * 0.7 > ww.x0 - 0.45 && c.pos.x + mx * 0.7 < ww.x1 + 0.45 &&
-        c.pos.z + mz * 0.7 > ww.z0 - 0.45 && c.pos.z + mz * 0.7 < ww.z1 + 0.45)!;
-      c.mode = 'shore';
-      c.pos.x = clamp(c.pos.x + mx * 0.7, w.x0 + 0.2, w.x1 - 0.2);
-      c.pos.z = clamp(c.pos.z + mz * 0.7, w.z0 + 0.2, w.z1 - 0.2);
-      c.jumpY = 0; c.vy = 0; c.vel.x = 0; c.vel.z = 0;
-      spawnSplash(c.pos.x, c.pos.z, false);
-      return;
-    }
     // climb back up ONLY when deliberately swimming INTO the hull
     const lp = worldToLocal2(c.pos);
     if (c.knock <= 0 && swimming &&

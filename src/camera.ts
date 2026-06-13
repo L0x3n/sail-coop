@@ -4,6 +4,7 @@ import { cam1 } from './scene';
 import { boatGroup, heelGroup } from './shipMesh';
 import { myChar, session } from './state';
 import { SHORE_Y } from './world';
+import { groundAt } from './simChars';
 import type { Char } from './types';
 
 /* =========================== first-person camera =========================== */
@@ -29,9 +30,10 @@ export function updateFPCamera(c: Char, cam: THREE.PerspectiveCamera, t: number)
     if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.55); _q.multiply(_qr); }
     cam.quaternion.copy(_q);
   } else if (c.mode === 'shore') {
-    // standing on a pier: plain world-space first person
-    let ey = SHORE_Y + CONFIG.eyeHeight + c.jumpY;
-    if (c.knock > 0) ey = SHORE_Y + 0.5;
+    // standing on a pier or an island beach: world-space first person
+    const g = groundAt(c.pos.x, c.pos.z) ?? SHORE_Y;
+    let ey = g + CONFIG.eyeHeight + c.jumpY;
+    if (c.knock > 0) ey = g + 0.5;
     else if (c.jumpY <= 0.0001 && Math.hypot(c.vel.x, c.vel.z) > 0.4)
       ey += Math.abs(Math.sin(c.walkPhase)) * CONFIG.headBob;
     cam.position.set(c.pos.x, ey, c.pos.z);

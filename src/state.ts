@@ -134,6 +134,9 @@ export const owned = {
   hatFancy: false,
   cannon: false,
   barge: false,
+  mopQuick: false,    // faster scrub
+  mopLong: false,     // longer scrub + bonk reach
+  mopGold: false,     // gilded mop (cosmetic)
 };
 export const prefs = {
   ship: 'sloop',
@@ -158,6 +161,14 @@ export function loadProgress() {
   } catch { /* corrupt save -> fresh start */ }
 }
 loadProgress();
+// one-time starter grant — gets the shops within reach (and fulfils the 1000-gold ask)
+try {
+  if (localStorage.getItem('sail.grant1k') !== '1') {
+    game.gold += 1000;
+    localStorage.setItem('sail.grant1k', '1');
+    saveProgress();
+  }
+} catch { /* private mode */ }
 
 /* --- net role --- */
 export type NetRole = null | 'host' | 'guest';

@@ -3,6 +3,16 @@ import { scene, sun, SKY } from './scene';
 import { wind, env, boat, layout } from './state';
 import { makeSeaFoamTexture } from './textures';
 import { PATCH, heightTexture, oceanHeight, updateOcean } from './fftOcean';
+import { SHALLOWS } from './world';
+
+/* island shorelines (x, z, radius) — the waves flatten to sea level inside
+   these so water meets the sand and drops, never washing over the beach */
+const SHORE_MAX = 6;
+const shoreVecs: THREE.Vector3[] = [];
+for (let i = 0; i < SHORE_MAX; i++) {
+  const s = SHALLOWS[i];
+  shoreVecs.push(new THREE.Vector3(s ? s.x : 0, s ? s.z : 0, s ? s.r : -1));
+}
 
 /* =========================== water ===========================
    Three interchangeable surfaces (Q toggles). FLAT and FANCY are
@@ -55,6 +65,8 @@ export const fancyUniforms = {
   uFogNear: { value: 260 }, uFogFar: { value: 850 },
   // the boat carves a calm pocket so waves never wash over the deck
   uBoat: { value: new THREE.Vector2(0, 0) }, uBoatY: { value: 0 }, uBoatR: { value: 12 },
+  // island shorelines: waves fade to sea level inside these
+  uShore: { value: shoreVecs }, uShoreN: { value: Math.min(SHALLOWS.length, SHORE_MAX) },
 };
 /* the lit surface — shared by the Gerstner (fancy) and FFT meshes. It reads
    vNrm + vCrest + vPos from whichever vertex shader produced the surface. */
@@ -116,6 +128,7 @@ const fancyMat = new THREE.ShaderMaterial({
   vertexShader: `
     uniform float uTime; uniform float uSwell; uniform vec2 uOffset;
     uniform vec2 uBoat; uniform float uBoatY; uniform float uBoatR;
+    uniform vec3 uShore[6]; uniform int uShoreN;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
       float k = 6.28318 / len;
@@ -142,12 +155,19 @@ const fancyMat = new THREE.ShaderMaterial({
       off += gerstner(vec2( 0.55, 0.8),  0.040 * uSwell,  3.1, base, tang, binc);
       // calm pocket: the boat flattens the water it sits in (no waves over the deck)
       float bf = smoothstep(uBoatR * 0.55, uBoatR * 1.3, length(base.xz - uBoat));
-      off.y = mix(uBoatY, off.y, bf);
-      off.x *= bf; off.z *= bf;
+      // shoreline: waves fade to sea level as they reach each island
+      float sf = 1.0;
+      for (int i = 0; i < 6; i++) {
+        if (i >= uShoreN) break;
+        if (uShore[i].z < 0.0) continue;
+        sf = min(sf, smoothstep(uShore[i].z - 2.0, uShore[i].z + 9.0, length(base.xz - uShore[i].xy)));
+      }
+      off.y = mix(uBoatY, off.y, bf) * sf;
+      off.x *= bf * sf; off.z *= bf * sf;
       p += off;
       p.xz -= uOffset;
       vCrest = off.y;
-      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), normalize(cross(binc, tang)), bf));
+      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), normalize(cross(binc, tang)), min(bf, sf)));
       vec4 wp = modelMatrix * vec4(p, 1.0);
       vPos = wp.xyz;
       gl_Position = projectionMatrix * viewMatrix * wp;
@@ -174,6 +194,7 @@ const fftMat = new THREE.ShaderMaterial({
   vertexShader: `
     uniform sampler2D uHeight; uniform float uPatch;
     uniform vec2 uBoat; uniform float uBoatY; uniform float uBoatR;
+    uniform vec3 uShore[6]; uniform int uShoreN;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);   // world XZ before displacing
@@ -189,8 +210,15 @@ const fftMat = new THREE.ShaderMaterial({
       vec3 nrm = normalize(vec3(-dhx, 1.0, -dhz));
       // calm pocket: flatten the water the boat displaces toward its own level
       float bf = smoothstep(uBoatR * 0.55, uBoatR * 1.3, length(wp.xz - uBoat));
-      h = mix(uBoatY, h, bf);
-      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), nrm, bf));
+      // shoreline: waves fade to sea level as they reach each island
+      float sf = 1.0;
+      for (int i = 0; i < 6; i++) {
+        if (i >= uShoreN) break;
+        if (uShore[i].z < 0.0) continue;
+        sf = min(sf, smoothstep(uShore[i].z - 2.0, uShore[i].z + 9.0, length(wp.xz - uShore[i].xy)));
+      }
+      h = mix(uBoatY, h, bf) * sf;
+      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), nrm, min(bf, sf)));
       vCrest = h;
       wp.y += h;
       vPos = wp.xyz;

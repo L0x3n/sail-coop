@@ -94,6 +94,14 @@ export const SHALLOWS = [
   { x: islandPos.x, z: islandPos.z, r: CONFIG.islandRadius },
   ...EXTRA_ISLES.map(i => ({ x: i.x, z: i.z, r: i.r })),
 ];
+/* walkable island ground (the flat beach top) — shore mode walks here too,
+   not just on the piers. y is the surface height the feet sit at. */
+export const LANDS = [
+  { x: islandPos.x, z: islandPos.z, r: CONFIG.islandRadius - 0.5, y: 0.6 },
+  ...EXTRA_ISLES.map(i => ({ x: i.x, z: i.z, r: i.r - 0.5, y: 0.6 })),
+];
+/* solid things you can't walk through on land (hills, houses, the lighthouse) */
+export const landBlockers: { x: number; z: number; r: number }[] = [];
 
 /* ---- animated shore: breaking foam at the waterline + caustics on the shelf ---- */
 const shoreFoamMat = new THREE.ShaderMaterial({
@@ -268,6 +276,7 @@ export function buildWorld() {
     const m = new THREE.Mesh(geo, moundMat);
     m.position.set(wx, h / 2 + 0.6, wz);
     scene.add(m);
+    landBlockers.push({ x: wx, z: wz, r: r * 0.7 });     // walk around the hill, not through it
   };
 
   /* beaches: irregular displaced sand discs, dry on top, damp-darkening to the waterline */
