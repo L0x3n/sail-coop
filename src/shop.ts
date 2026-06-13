@@ -4,6 +4,7 @@ import { HOME_DOCK } from './world';
 import { buildShip, setBoatPreset } from './shipMesh';
 import { resetBarge } from './barge';
 import { setHat } from './pirates';
+import { gildMops } from './hands';
 import { toast } from './hud';
 import * as audio from './audio';
 
@@ -12,15 +13,22 @@ import * as audio from './audio';
    purchases buy more chaos (more cargo, bigger hulls, sillier hats).
    Gold + ownership persist in the host's browser.
    =================================================================== */
+export type ShopCat = 'boat' | 'hats' | 'mop';
 export interface ShopItem {
   id: string;
   name: string;
   desc: string;
   price: number;
-  kind: 'ship' | 'upgrade' | 'hat';
+  kind: 'ship' | 'upgrade' | 'hat' | 'mop';
   key?: keyof typeof owned;
   style?: string;        // hat style id
 }
+/* each NPC stocks one category: ship/upgrade -> the shipwright (boat),
+   hat -> the outfitter, mop -> the deckhand */
+const catOf = (it: ShopItem): ShopCat => it.kind === 'hat' ? 'hats' : it.kind === 'mop' ? 'mop' : 'boat';
+export const CAT_TITLE: Record<ShopCat, string> = {
+  boat: '⚓ THE SHIPWRIGHT', hats: '🎩 THE OUTFITTER', mop: '🧹 THE DECKHAND',
+};
 export const CATALOG: ShopItem[] = [
   { id: 'skiff', name: 'The Skiff', desc: 'small, twitchy, tips like a coin — 4 crates, quick runs', price: 80, kind: 'ship', key: 'skiff' },
   { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — 14 crates of walking liability', price: 160, kind: 'ship', key: 'galleon' },
@@ -30,6 +38,9 @@ export const CATALOG: ShopItem[] = [
   { id: 'barge', name: 'Cargo barge', desc: '+6 crates on a trailer that steers itself and CAN capsize', price: 180, kind: 'upgrade', key: 'barge' },
   { id: 'hatStraw', name: 'Straw hat', desc: 'beach mode. Flies off when you get bonked.', price: 30, kind: 'hat', key: 'hatStraw', style: 'straw' },
   { id: 'hatFancy', name: 'Admiral tricorn', desc: 'gold trim. The gulls aim for it.', price: 45, kind: 'hat', key: 'hatFancy', style: 'fancy' },
+  { id: 'mopQuick', name: 'Quick mop', desc: 'scrubs the gull-mess off the deck noticeably faster', price: 40, kind: 'mop', key: 'mopQuick' },
+  { id: 'mopLong', name: 'Long mop', desc: 'longer handle — scrub and bonk your matey from farther off', price: 40, kind: 'mop', key: 'mopLong' },
+  { id: 'mopGold', name: 'Gilded mop', desc: 'a solid-gold mop. Cleans no better. Looks magnificent.', price: 50, kind: 'mop', key: 'mopGold' },
 ];
 
 /* host applies purchases; the matey's clicks arrive as net messages */
@@ -44,7 +55,8 @@ export function tryBuy(id: string) {
   audio.dockedChime();
   toast('Bought: ' + item.name + '!', '#aef7a2');
   if (id === 'cannon') buildShip(layout.scale);                       // the gun appears on deck
-  if (id === 'barge') toast('Hitch the barge here at the home mooring (shop panel).', '#ffd95e');
+  if (id === 'barge') toast('Hitch the barge at the home mooring (the shipwright).', '#ffd95e');
+  if (id === 'mopGold') gildMops();
   refreshShop();
 }
 
@@ -105,10 +117,13 @@ export function setShopHandlers(buy: (id: string) => void, hat: (style: string) 
 }
 const wrap = document.getElementById('shopWrap')!;
 const list = document.getElementById('shopList')!;
-export function toggleShop() {
+const headEl = wrap.querySelector('#shopHead b') as HTMLElement;
+let shopCat: ShopCat = 'boat';
+export function toggleShop(cat: ShopCat = shopCat) {
   shopOpen = !shopOpen;
   wrap.style.display = shopOpen ? 'flex' : 'none';
   if (shopOpen) {
+    shopCat = cat;
     document.exitPointerLock?.();
     refreshShop();
   }
@@ -117,12 +132,14 @@ document.getElementById('shopClose')!.addEventListener('click', () => { if (shop
 
 export function refreshShop() {
   if (!shopOpen) return;
+  if (headEl) headEl.textContent = CAT_TITLE[shopCat];
   document.getElementById('shopGold')!.textContent = game.gold + 'g';
   list.innerHTML = '';
   const myIdx = netRole === 'guest' ? 1 : 0;
   // base hats are always wearable
   const rows: { name: string; desc: string; right: string; cb?: () => void }[] = [];
   for (const item of CATALOG) {
+    if (catOf(item) !== shopCat) continue;        // each NPC stocks one category
     const has = item.key ? owned[item.key] : false;
     if (item.kind === 'hat') {
       rows.push({
@@ -150,7 +167,8 @@ export function refreshShop() {
       });
     }
   }
-  rows.push({ name: 'Back to the sloop', desc: 'the trusty default', right: prefs.ship === 'sloop' ? 'IN USE' : 'Use', cb: () => equipShip('sloop') });
+  if (shopCat === 'boat')
+    rows.push({ name: 'Back to the sloop', desc: 'the trusty default', right: prefs.ship === 'sloop' ? 'IN USE' : 'Use', cb: () => equipShip('sloop') });
   for (const r of rows) {
     const row = document.createElement('div');
     row.className = 'shoprow';

@@ -11,7 +11,7 @@ import { buildShip, setBoatPreset } from './shipMesh';
 import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
 import { barge, resetBarge } from './barge';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
-import { handsEdge, mopTap, mops, pressE, resetHands } from './hands';
+import { gildMops, handsEdge, mopTap, mops, pressE, resetHands } from './hands';
 import type { BoatPreset } from './types';
 import { inputAxes, localDrag } from './input';
 import { applyAspect, scene } from './scene';
@@ -219,6 +219,11 @@ export function applySnapshot(m: Snapshot) {
     owned.hatStraw = m.up.hs;
     owned.hatFancy = m.up.hf;
     owned.barge = m.up.bg ?? false;
+    owned.mopQuick = m.up.mq ?? false;
+    owned.mopLong = m.up.ml ?? false;
+    const hadGold = owned.mopGold;
+    owned.mopGold = m.up.mg ?? false;
+    if (owned.mopGold && !hadGold) gildMops();                 // the matey's mop gilds too
     const hadCannon = owned.cannon;
     owned.cannon = m.up.ca ?? false;
     if (owned.cannon && !hadCannon) buildShip(layout.scale);   // the gun appears for the matey too
@@ -344,7 +349,7 @@ export function hostNetStep(dt: number) {
     g: { gold: game.gold, del: game.delivered, lost: game.lost },
     rt: routeIdx,
     up: { bd: owned.bigDeck, ch: owned.chartNorth, sk: owned.skiff, gl: owned.galleon, hs: owned.hatStraw, hf: owned.hatFancy,
-          ca: owned.cannon, bg: owned.barge },
+          ca: owned.cannon, bg: owned.barge, mq: owned.mopQuick, ml: owned.mopLong, mg: owned.mopGold },
     cn: { y: cannon.yaw, p: cannon.pitch, r: cannon.reload },
     br: { a: owned.barge && prefs.barge, x: barge.pos.x, z: barge.pos.z, yw: barge.yaw, rl: barge.roll, cap: barge.capsized },
     c: chars.map(c => ({

@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
-import { boat, charActive, chars, layout, netDrag, p1 } from './state';
+import { boat, charActive, chars, layout, netDrag, owned, p1 } from './state';
 import { heelGroup } from './shipMesh';
 import { charAxes, localToWorld2, nearestStation, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
 import { anyLashable, lashed, nearestCrateFor, pickUp, putDown, setLashed } from './cargo';
 import { barge, bargeActive, freeSlot, nearBarge, stowCrate } from './barge';
 import { cannon } from './cannon';
-import { BOARD_SPOT, DELIVERY, ROUTES, SHOP_SPOT, routeIdx } from './world';
+import { BOARD_SPOT, DELIVERY, NPCS, ROUTES, routeIdx } from './world';
 import { spawnSplash } from './effects';
 import { localDrag } from './input';
 import { toast } from './hud';
@@ -33,12 +33,24 @@ export interface Mop {
   bucket: THREE.Group;
 }
 
+/* shared mop materials so the "gilded mop" upgrade can recolour every mop */
+const mopWoodMat = new THREE.MeshLambertMaterial({ color: 0xa9764a });
+const mopGripMat = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+const mopMetalMat = new THREE.MeshLambertMaterial({ color: 0x8d959c });
+const mopStrandMat = new THREE.MeshLambertMaterial({ color: 0xe8e2d0 });
+export function gildMops() {
+  mopWoodMat.color.set(0xd4af37);
+  mopMetalMat.color.set(0xffe14d); mopMetalMat.emissive.set(0x6a5200); mopMetalMat.emissiveIntensity = 0.4;
+  mopStrandMat.color.set(0xfff0a0);
+}
+/* mop-upgrade tuning (read live so a fresh purchase applies at once) */
+const scrubReach = () => owned.mopLong ? CONFIG.scrubRange * 1.5 : CONFIG.scrubRange;
+const scrubDur = () => owned.mopQuick ? CONFIG.scrubTime * 0.55 : CONFIG.scrubTime;
+const whackReach = () => owned.mopLong ? CONFIG.whackRange * 1.4 : CONFIG.whackRange;
+
 function buildMopMesh(): THREE.Group {
   const g = new THREE.Group();
-  const wood = new THREE.MeshLambertMaterial({ color: 0xa9764a });
-  const grip = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
-  const metal = new THREE.MeshLambertMaterial({ color: 0x8d959c });
-  const strands = new THREE.MeshLambertMaterial({ color: 0xe8e2d0 });
+  const wood = mopWoodMat, grip = mopGripMat, metal = mopMetalMat, strands = mopStrandMat;
   const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1.25, 7), wood);
   handle.position.y = 0.72;
   g.add(handle);
@@ -91,6 +103,7 @@ export const mops: Mop[] = [0, 1].map(() => ({
   thrown: false, thrower: -1, on: true,
   mesh: buildMopMesh(), bucket: buildBucket(),
 }));
+if (owned.mopGold) gildMops();   // a saved gilded mop stays golden
 
 /* lay the buckets out for the current boat; co-op gets the second mop */
 export function resetMops(coop: boolean) {
@@ -147,7 +160,7 @@ const stationName = (st: 'helm' | 'sail' | 'cannon') =>
 
 const anchorSpot = () => ({ x: 0, z: layout.deckZ * 0.88 });
 
-export function getInteract(c: Char): { kind: InteractKind; label: string } | null {
+export function getInteract(c: Char): { kind: InteractKind; label: string; shopCat?: 'boat' | 'hats' | 'mop' } | null {
   if (c.grabbedBy >= 0 || c.mode === 'water' || c.knock > 0) return null;
   // carrying a crate: deliver > put down (boarding/disembarking is just walking now)
   if (c.carry >= 0) {
@@ -173,14 +186,18 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
   if (c.station) return { kind: 'station-leave', label: 'E — let go of the ' + stationName(c.station) };
   // holding the mop
   if (mopOf(c)) {
-    if (c.mode === 'deck' && nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) {
+    if (c.mode === 'deck' && nearestSplat(c.pos.x, c.pos.z, scrubReach())) {
       return { kind: 'mop-scrub', label: 'Hold LMB — scrub the poop!' };
     }
     return { kind: 'mop-put', label: 'E — put the mop down' };
   }
-  // the chandler's stall (opens a local panel — handled client-side)
-  if (c.mode === 'shore' && Math.hypot(c.pos.x - SHOP_SPOT.x, c.pos.z - SHOP_SPOT.z) < 2.0) {
-    return { kind: 'shop', label: 'E — browse the chandler\'s wares' };
+  // the village shopkeepers — each opens their own store (local panel)
+  if (c.mode === 'shore') {
+    for (const npc of NPCS) {
+      if (Math.hypot(c.pos.x - npc.x, c.pos.z - npc.z) < 2.6) {
+        return { kind: 'shop', label: 'E — talk to ' + npc.label, shopCat: npc.cat };
+      }
+    }
   }
   // the job board on the home pier — E pulls up the visual board
   if (c.mode === 'shore' && Math.hypot(c.pos.x - BOARD_SPOT.x, c.pos.z - BOARD_SPOT.z) < 1.8) {
@@ -338,13 +355,13 @@ const holds = new Map<Char, Hold>();
 const whackCd = new Map<Char, number>();
 export function mopTap(c: Char) {
   if (c.mode !== 'deck' || !mopOf(c)) return;
-  if (nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange)) return;   // that press means "scrub"
+  if (nearestSplat(c.pos.x, c.pos.z, scrubReach())) return;   // that press means "scrub"
   if ((whackCd.get(c) ?? 0) > 0) return;
   const other = chars[1 - chars.indexOf(c)];
   if (!other || !charActive(other) || other.mode !== 'deck' || other.grabbedBy >= 0) return;
   const dx = other.pos.x - c.pos.x, dz = other.pos.z - c.pos.z;
   const d = Math.hypot(dx, dz);
-  if (d > CONFIG.whackRange) return;
+  if (d > whackReach()) return;
   whackCd.set(c, CONFIG.whackCooldown);
   releaseStation(other);
   other.knock = Math.max(other.knock, CONFIG.whackKnock);
@@ -432,10 +449,10 @@ export function updateHands(dt: number) {
 
     // scrubbing: hold LMB with the mop near a splat
     if (c.hasMop && c.mode === 'deck' && ax.u) {
-      const s = nearestSplat(c.pos.x, c.pos.z, CONFIG.scrubRange);
+      const s = nearestSplat(c.pos.x, c.pos.z, scrubReach());
       if (s) {
         c.scrubT += dt;
-        if (c.scrubT >= CONFIG.scrubTime) {
+        if (c.scrubT >= scrubDur()) {
           mopSplat(s.id);
           c.scrubT = 0;
         }

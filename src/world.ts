@@ -68,7 +68,13 @@ export function nextUnlockedRoute(from: number): number {
   }
   return from;
 }
-export const SHOP_SPOT = { x: 1.5, z: -200 };  // the chandler's stall on the home pier
+export const SHOP_SPOT = { x: 1.5, z: -200 };  // (legacy) old chandler spot
+/* the three shopkeepers in the home-island village; E near one opens their store */
+export const NPCS = [
+  { x: -13, z: -239, cat: 'boat' as const, label: 'the Shipwright — boats & deck gear' },
+  { x: 0,   z: -236, cat: 'hats' as const, label: 'the Outfitter — hats & finery' },
+  { x: 13,  z: -239, cat: 'mop'  as const, label: 'the Deckhand — mop upgrades' },
+];
 
 export interface Obstacle { x: number; z: number; r: number; }
 export const obstacles: Obstacle[] = [];
@@ -590,30 +596,133 @@ export function buildWorld() {
     }
   }
 
-  // the chandler's stall (the chaos shop)
-  const stall = new THREE.Group();
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.7),
-    new THREE.MeshLambertMaterial({ color: 0x8a5a33 }));
-  counter.position.y = SHORE_Y + 0.45;
-  stall.add(counter);
-  for (const sx of [-0.7, 0.7]) {
-    const sPost = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.2, 6), woodDark);
-    sPost.position.set(sx, SHORE_Y + 1.1, 0);
-    stall.add(sPost);
+  /* ====================== the home-island village ======================
+     a little harbour town on the flat ring: cottages, three shopkeepers
+     (each runs one store), a market stall apiece, and seaside clutter. */
+  {
+    const GY = 0.6;                                          // beach-top ground height
+    const woodPale = new THREE.MeshLambertMaterial({ color: 0xa9764a });
+    // --- a cottage: plastered walls, pyramid roof, door + glowing window ---
+    const buildHouse = (x: number, z: number, rot: number, wall: number, roof: number) => {
+      const h = new THREE.Group();
+      const W = 4.4, D = 3.8, WH = 2.7;
+      const walls = new THREE.Mesh(new THREE.BoxGeometry(W, WH, D), new THREE.MeshLambertMaterial({ color: wall }));
+      walls.position.y = GY + WH / 2;
+      h.add(walls);
+      const beam = new THREE.MeshLambertMaterial({ color: 0x5d3a20 });
+      for (const cx of [-W / 2 + 0.1, W / 2 - 0.1]) {        // corner beams
+        const c = new THREE.Mesh(new THREE.BoxGeometry(0.2, WH, 0.2), beam);
+        c.position.set(cx, GY + WH / 2, D / 2 - 0.1); h.add(c);
+        const c2 = c.clone(); c2.position.z = -D / 2 + 0.1; h.add(c2);
+      }
+      const roofM = new THREE.Mesh(new THREE.ConeGeometry(W * 0.62, 1.8, 4),
+        new THREE.MeshLambertMaterial({ color: roof, flatShading: true }));
+      roofM.position.y = GY + WH + 0.9; roofM.rotation.y = Math.PI / 4;
+      h.add(roofM);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.6, 0.12), beam);
+      door.position.set(0, GY + 0.8, D / 2 + 0.02); h.add(door);
+      const winMat = new THREE.MeshLambertMaterial({ color: 0xffe9a8, emissive: 0xffb24d, emissiveIntensity: 0.7 });
+      for (const wx of [-W * 0.28, W * 0.28]) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.75, 0.1), winMat);
+        win.position.set(wx, GY + 1.55, D / 2 + 0.02); win.userData.noShadow = true; h.add(win);
+      }
+      h.position.set(x, 0, z); h.rotation.y = rot;
+      scene.add(h);
+      landBlockers.push({ x, z, r: Math.max(W, D) * 0.5 + 0.2 });
+    };
+
+    // --- a market stall (awning + counter), tinted per trade ---
+    const buildStall = (x: number, z: number, awn: number) => {
+      const s = new THREE.Group();
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 0.9), new THREE.MeshLambertMaterial({ color: 0x8a5a33 }));
+      counter.position.y = GY + 0.45; s.add(counter);
+      for (const px of [-0.95, 0.95]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 2.4, 6), woodDark);
+        post.position.set(px, GY + 1.2, -0.4); s.add(post);
+      }
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.08, 1.3), new THREE.MeshLambertMaterial({ color: awn }));
+      awning.position.set(0, GY + 2.35, -0.1); awning.rotation.x = 0.16; s.add(awning);
+      s.position.set(x, 0, z);
+      scene.add(s);
+    };
+
+    // --- a simple standing shopkeeper, facing the harbour (+z) ---
+    const buildNPC = (x: number, z: number, shirt: number, accent: number) => {
+      const g = new THREE.Group();
+      const skin = new THREE.MeshLambertMaterial({ color: 0xe8b48a });
+      const shirtMat = new THREE.MeshLambertMaterial({ color: shirt });
+      for (const lx of [-0.13, 0.13]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 6), new THREE.MeshLambertMaterial({ color: 0x39394a }));
+        leg.position.set(lx, GY + 0.35, 0); g.add(leg);
+      }
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.28, 0.95, 8), shirtMat);
+      body.position.y = GY + 1.18; g.add(body);
+      for (const ax of [-0.37, 0.37]) {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.72, 6), shirtMat);
+        arm.position.set(ax, GY + 1.22, 0); arm.rotation.z = ax > 0 ? -0.16 : 0.16; g.add(arm);
+      }
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 8), skin);
+      head.position.y = GY + 1.92; g.add(head);
+      for (const ex of [-0.1, 0.1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), new THREE.MeshBasicMaterial({ color: 0x222020 }));
+        eye.position.set(ex, GY + 1.96, 0.23); eye.userData.noShadow = true; g.add(eye);
+      }
+      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.18, 10), new THREE.MeshLambertMaterial({ color: accent }));
+      hat.position.y = GY + 2.16; g.add(hat);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 12), new THREE.MeshLambertMaterial({ color: accent }));
+      brim.position.y = GY + 2.08; g.add(brim);
+      g.position.set(x, 0, z);
+      scene.add(g);
+    };
+
+    // place the three shopkeepers + their stalls (positions match world.NPCS)
+    buildNPC(-13, -239, 0x3a6ea5, 0x5d3a20);  buildStall(-13, -240.6, 0x2f6e66);   // Shipwright
+    buildNPC(0, -236, 0xb0476b, 0xffd43b);    buildStall(0, -237.6, 0xc0392b);     // Outfitter
+    buildNPC(13, -239, 0x4a9e54, 0xe8e2d0);   buildStall(13, -240.6, 0x4dabf7);    // Deckhand
+    // a hanging sign over the square
+    const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 3.2, 7), woodDark);
+    signPost.position.set(0, GY + 1.6, -231); scene.add(signPost);
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x8a5a33 }));
+    sign.position.set(0, GY + 2.9, -231); scene.add(sign);
+
+    // cottages tucked behind the market
+    buildHouse(-24, -246, 0.5, 0xe6d3a8, 0xb0463a);
+    buildHouse(24, -246, -0.5, 0xd8c79c, 0x9a6b3f);
+    buildHouse(3, -250, 0.1, 0xe9dcb6, 0xc0563a);
+
+    // seaside clutter: barrels, crate stacks, two lamp posts, a stepping-stone path
+    const bandMat2 = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+    for (const [bx, bz] of [[-8, -234], [9, -234], [-18, -242], [19, -243], [6, -245]] as const) {
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.78, 10), woodPale);
+      barrel.position.set(bx, GY + 0.39, bz); scene.add(barrel);
+      for (const by of [-0.2, 0.2]) {
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.025, 6, 14), bandMat2);
+        band.position.set(bx, GY + 0.39 + by, bz); band.rotation.x = Math.PI / 2; scene.add(band);
+      }
+      landBlockers.push({ x: bx, z: bz, r: 0.5 });
+    }
+    for (const [cx, cz, n] of [[-20, -238, 2], [20, -238, 2]] as const) {
+      for (let i = 0; i < n; i++) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), woodPale);
+        crate.position.set(cx + (i % 2) * 0.2, GY + 0.35 + i * 0.72, cz); crate.rotation.y = i * 0.3; scene.add(crate);
+      }
+    }
+    for (const [lx, lz] of [[-7, -230], [7, -230]] as const) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.0, 7), woodDark);
+      post.position.set(lx, GY + 1.5, lz); scene.add(post);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6),
+        new THREE.MeshLambertMaterial({ color: 0xffd27a, emissive: 0xff9a2a, emissiveIntensity: 1.3 }));
+      lamp.position.set(lx, GY + 3.05, lz); lamp.userData.noShadow = true; scene.add(lamp);
+    }
+    // a worn sand path from the pier into the square
+    const pathMat = new THREE.MeshLambertMaterial({ color: 0xd8bd84 });
+    for (let i = 0; i < 6; i++) {
+      const slab = new THREE.Mesh(new THREE.CircleGeometry(1.6, 14), pathMat);
+      slab.rotation.x = -Math.PI / 2;
+      slab.position.set((Math.random() - 0.5) * 1.2, GY + 0.02, -226 - i * 1.8);
+      slab.userData.noShadow = true; scene.add(slab);
+    }
   }
-  const awning = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.07, 1.1),
-    new THREE.MeshLambertMaterial({ color: 0xc0392b }));
-  awning.position.y = SHORE_Y + 2.2;
-  awning.rotation.x = 0.12;
-  stall.add(awning);
-  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 12),
-    new THREE.MeshLambertMaterial({ color: 0xffd43b, emissive: 0x7a5c00, emissiveIntensity: 0.5 }));
-  coin.position.set(0, SHORE_Y + 1.65, 0);
-  coin.rotation.x = Math.PI / 2;
-  stall.add(coin);
-  stall.position.set(SHOP_SPOT.x, 0, SHOP_SPOT.z);
-  stall.rotation.y = -Math.PI / 2;
-  scene.add(stall);
 
   // rocks: weave between spawn and the island, never blocking the pier line
   const rockDefs = [{ x: -19, z: -62, r: 4 }, { x: 23, z: -118, r: 5 }, { x: -10, z: -168, r: 3.5 }, { x: 26, z: -205, r: 4.5 }];

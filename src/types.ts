@@ -88,7 +88,8 @@ export interface Snapshot {
   cg: CrateSnap[];
   g: { gold: number; del: number; lost: number };
   rt: number;     // active route index
-  up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean; ca: boolean; bg: boolean };
+  up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean; ca: boolean; bg: boolean;
+        mq: boolean; ml: boolean; mg: boolean };
   cn: { y: number; p: number; r: number };                                       // cannon aim + reload
   br: { a: boolean; x: number; z: number; yw: number; rl: number; cap: number }; // the barge
 }

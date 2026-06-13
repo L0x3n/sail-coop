@@ -76,10 +76,10 @@ function handleLocalKeys() {
       if (shopOpen) { toggleShop(); }
       else if (questOpen) { toggleQuest(); }
       else {
-        const k = getInteract(myChar())?.kind;
-        if (k === 'shop') toggleShop();            // both panels are local to each player
-        else if (k === 'route') toggleQuest();
-        else if (netRole === 'guest') sendGrab();  // host runs the E-interaction
+        const it = getInteract(myChar());
+        if (it?.kind === 'shop') toggleShop(it.shopCat);   // each NPC opens their own store
+        else if (it?.kind === 'route') toggleQuest();
+        else if (netRole === 'guest') sendGrab();           // host runs the E-interaction
         else pressE(p1);
       }
     }
@@ -249,7 +249,7 @@ window.__sail = {
   _net: { startSolo, startHost, startJoin, resetState, hostOnData, guestOnData, applySnapshot },
   Peer: PeerCtor,
   env, layout, BOATS, mops, crates, splats, game, cannon, barge, gulls, daynight,
-  _hands: { handsEdge, mopTap, pressE, updateHands, resetHands },
+  _hands: { handsEdge, mopTap, pressE, updateHands, resetHands, getInteract },
   _cannon: { fireCannon, balls, bomberPos },
   _shop: { tryBuy, equipBarge },
   _splats: { placeSplat, removeSplat, nearestSplat, clearSplats },
