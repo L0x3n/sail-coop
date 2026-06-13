@@ -202,21 +202,30 @@ function renderViews() {
   const v = viewSize();
   renderer.setViewport(0, 0, v.w, v.h);
   fancyUniforms.uCamPos.value.copy(cam1.position);
+  if (session.inMenu) { renderer.render(scene, cam1); return; }   // cinematic menu: show the whole scene
   const me = myChar();
-  // First person normally hides your whole body. But when your hands are busy —
-  // holding the mop or carrying a crate — show your arms + what's in them so you
-  // can watch yourself scrub/haul. We then hide ONLY the head, which the camera
-  // sits inside of (the eye is ~0.1 above the head's centre).
+  // First person hides your own body. But while holding the mop, show ONLY your
+  // arms (which carry it) so you can watch yourself scrub — hiding the torso/head
+  // avoids staring at the inside of your own body (the camera sits within it).
   const meIdx = chars.indexOf(me);
-  const handsBusy = me.carry >= 0 || mops.some(m => m.on && m.held === meIdx);
-  const head = handsBusy
-    ? (me.mesh.userData.parts as { headBone?: { visible: boolean } } | undefined)?.headBone
+  const holdingMop = mops.some(m => m.on && m.held === meIdx);
+  const parts = holdingMop
+    ? (me.mesh.userData.parts as { arms?: { traverse(f: (o: any) => void): void }[] } | undefined)
     : undefined;
-  if (head) head.visible = false;          // keep the body, drop just the head
-  else me.mesh.visible = false;            // empty-handed: hide the whole body as before
-  renderer.render(scene, cam1);
-  if (head) head.visible = true;
-  else me.mesh.visible = charActive(me);
+  if (parts?.arms) {
+    const keep = new Set<unknown>();
+    parts.arms.forEach(a => a.traverse(o => keep.add(o)));        // the arms + the mop riding them
+    const hidden: { visible: boolean }[] = [];
+    me.mesh.traverse((o: any) => {
+      if (o.isMesh && !keep.has(o) && o.visible) { o.visible = false; hidden.push(o); }
+    });
+    renderer.render(scene, cam1);
+    for (const o of hidden) o.visible = true;
+  } else {
+    me.mesh.visible = false;
+    renderer.render(scene, cam1);
+    me.mesh.visible = charActive(me);
+  }
 }
 
 /* =========================== main loop =========================== */

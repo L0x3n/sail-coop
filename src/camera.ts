@@ -4,7 +4,8 @@ import { cam1 } from './scene';
 import { boatGroup, heelGroup } from './shipMesh';
 import { myChar, session } from './state';
 import { SHORE_Y } from './world';
-import { groundAt } from './simChars';
+import { WATER_EYE, groundAt } from './simChars';
+import { spawnDroplets } from './effects';
 import type { Char } from './types';
 
 /* =========================== first-person camera =========================== */
@@ -42,8 +43,11 @@ export function updateFPCamera(c: Char, cam: THREE.PerspectiveCamera, t: number)
     if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.55); _qy.multiply(_qr); }
     cam.quaternion.copy(_qy);
   } else {
-    // bobbing at the waterline
-    cam.position.set(c.pos.x, 0.5 + Math.sin(t * 2.6 + c.pos.x) * 0.12, c.pos.z);
+    // at the waterline — but if you just came off the deck/shore, c.jumpY holds
+    // the leftover fall height so the eye DROPS into the water instead of snapping
+    const settling = c.jumpY > 0.05;
+    const bob = settling ? 0 : Math.sin(t * 2.6 + c.pos.x) * 0.12;
+    cam.position.set(c.pos.x, WATER_EYE + c.jumpY + bob, c.pos.z);
     _qy.setFromAxisAngle(Y_UP, c.facing + Math.PI);
     _qp.setFromAxisAngle(X_AX, c.pitch); _qy.multiply(_qp);
     if (c.knock > 0) { _qr.setFromAxisAngle(Z_AX, 0.5); _qy.multiply(_qr); }
@@ -51,7 +55,30 @@ export function updateFPCamera(c: Char, cam: THREE.PerspectiveCamera, t: number)
   }
 }
 
+/* =========================== cinematic menu camera =========================== */
+const _mTgt = new THREE.Vector3();
+const _mFwd = new THREE.Vector3();
+let spray = 0;
+function updateMenuCamera(cam: THREE.PerspectiveCamera, t: number, dt: number) {
+  // slow orbit over the water, always facing the home island + village
+  _mTgt.set(0, 5, -236);
+  const a = Math.sin(t * 0.045) * 0.6;            // gentle side-to-side sweep
+  const R = 42 + Math.sin(t * 0.03) * 5;          // breathing dolly in/out
+  cam.position.set(Math.sin(a) * R, 4.4 + Math.sin(t * 0.45) * 0.25, -236 + Math.cos(a) * R);
+  cam.lookAt(_mTgt);
+  // sea spray drifting up toward the lens for a premium, alive feel
+  spray -= dt;
+  if (spray <= 0) {
+    spray = 0.28;
+    _mFwd.set(_mTgt.x - cam.position.x, 0, _mTgt.z - cam.position.z).normalize();
+    const px = cam.position.x + _mFwd.x * 8 + (Math.random() - 0.5) * 9;
+    const pz = cam.position.z + _mFwd.z * 8 + (Math.random() - 0.5) * 9;
+    spawnDroplets(px, pz, 5, 3.0, 4.4);
+  }
+}
+
 export function updateCameras(dt: number, t: number) {
+  if (session.inMenu) { updateMenuCamera(cam1, t, dt); return; }
   updateFPCamera(myChar(), cam1, t);
   if (session.shake > 0.001) {
     cam1.position.x += (Math.random() - 0.5) * session.shake * 0.7;

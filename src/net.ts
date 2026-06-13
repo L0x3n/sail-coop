@@ -1,5 +1,5 @@
 import Peer, { DataConnection } from 'peerjs';
-import { BOATS, DECK_Y } from './config';
+import { BOATS, CONFIG, DECK_Y } from './config';
 import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
 import { boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
@@ -18,7 +18,7 @@ import { applyAspect, scene } from './scene';
 import { heelGroup } from './shipMesh';
 import { animateChar } from './pirates';
 import { spawnSplash, spawnWake } from './effects';
-import { groundAt, releaseStation, resetState, localToWorld2 } from './simChars';
+import { WATER_EYE, groundAt, releaseStation, resetState, localToWorld2 } from './simChars';
 import { v2 } from './mathUtil';
 import { modeSelEl, netChipEl, netStatusEl, setToastRelay, showDocked, toast } from './hud';
 import type { CharSnap, NetMsg, Snapshot } from './types';
@@ -315,7 +315,11 @@ export function guestStep(dt: number) {
       c.mesh.position.set(c.pos.x, y, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);
     } else {
-      c.mesh.position.set(c.pos.x, 0.18 + Math.sin(session.simT * 3 + i) * 0.08, c.pos.z);
+      // still dropping in? the body falls with the synced jumpY, else it bobs
+      const my = c.jumpY > 0.05
+        ? Math.max(0.18, WATER_EYE + c.jumpY - CONFIG.eyeHeight)
+        : 0.18 + Math.sin(session.simT * 3 + i) * 0.08;
+      c.mesh.position.set(c.pos.x, my, c.pos.z);
       c.mesh.rotation.set(0, c.facing, 0);
       c.rippleT -= dt;
       if (mv && c.rippleT <= 0) { c.rippleT = 0.22; spawnWake(c.pos.x, c.pos.z, c.facing, 0.5); }

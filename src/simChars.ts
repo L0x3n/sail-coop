@@ -20,6 +20,11 @@ export function groundAt(x: number, z: number): number | null {
   return null;
 }
 
+/* the swimmer's resting eye height at the waterline (the camera reads this too).
+   When you step/jump off into the sea, the leftover height is parked in c.jumpY
+   and gravity drains it here so the eye FALLS in instead of snapping down. */
+export const WATER_EYE = 0.5;
+
 /* ============ boat-local <-> world transforms ============ */
 export function localToWorld2(p: { x: number; z: number }) {
   const f = headVec(boat.yaw), r = rightVec(boat.yaw);
@@ -73,13 +78,14 @@ export function goOverboard(c: Char) {
   c.mode = 'water';
   heelGroup.remove(c.mesh);
   scene.add(c.mesh);
-  // straight into the water — keep some momentum, no daze, no announcement
+  // fall naturally into the sea — keep momentum, no daze, no announcement
   c.vel = v2(boat.vel.x * 0.4, boat.vel.z * 0.4);
   c.pos = v2(w.x, w.z);
   c.facing = wrapPi(boat.yaw + c.facing);   // boat-local facing -> world facing
-  c.jumpY = 0; c.vy = 0;
+  // park the eye's height in jumpY; the water branch drains it under gravity,
+  // and splashes on impact. Keep c.vy so a jump arcs through.
+  c.jumpY = Math.max(0, DECK_Y + c.jumpY + CONFIG.eyeHeight - WATER_EYE);
   c.overboardCount++;
-  spawnSplash(w.x, w.z, true);
 }
 export function climbAboard(c: Char) {
   const lp = worldToLocal2(c.pos);
@@ -110,7 +116,7 @@ function exitDeck(c: Char) {
   goOverboard(c);
 }
 /* leaving a pier: onto the deck if the boat is right there, else the sea */
-function exitWalkway(c: Char, grounded: boolean) {
+function exitWalkway(c: Char, grounded: boolean, leaveFeetY: number) {
   const lp = worldToLocal2(c.pos);
   if (Math.abs(lp.x) < layout.deckX + 0.2 && Math.abs(lp.z) < layout.deckZ + 0.2) {
     scene.remove(c.mesh);
@@ -123,10 +129,10 @@ function exitWalkway(c: Char, grounded: boolean) {
     c.jumpY += 0.15;                           // pier deck sits a touch higher
     return true;
   }
-  if (grounded) {                              // straight into the water, no theatre
+  if (grounded) {                              // step off into the water — fall in, don't snap
     c.mode = 'water';
-    c.jumpY = 0; c.vy = 0;
-    spawnSplash(c.pos.x, c.pos.z, false);
+    c.jumpY = Math.max(0, leaveFeetY + CONFIG.eyeHeight - WATER_EYE);   // eye fall, drained in the water branch
+    c.vy = 0;
     return true;
   }
   return false;                                // still airborne — keep flying
@@ -285,6 +291,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
 
   } else if (c.mode === 'shore') {
     // ---- ashore: world-space walking on the piers ----
+    const standY = groundAt(c.pos.x, c.pos.z) ?? SHORE_Y;   // height we're on (for a clean fall if we step off)
     const grounded = c.jumpY <= 0.0001;
     if (charAxes(c).j && grounded && c.knock <= 0) c.vy = CONFIG.jumpVel;
     if (!grounded || c.vy > 0) {
@@ -316,7 +323,7 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     }
     // left all walkable ground (pier OR island)? board the boat if alongside, else into the drink
     const g = groundAt(c.pos.x, c.pos.z);
-    if (g === null && exitWalkway(c, grounded)) return;
+    if (g === null && exitWalkway(c, grounded, standY + c.jumpY)) return;
     const moving = Math.hypot(c.vel.x, c.vel.z) > 0.4;
     c.animMoving = moving && c.knock <= 0;
     let sy = (g ?? SHORE_Y) + c.jumpY;
@@ -325,9 +332,16 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
     c.mesh.rotation.set(0, c.facing, 0);
 
   } else {
+    // ---- finish the entry fall before swimming (no snap to the waterline) ----
+    if (c.jumpY > 0.0001 || c.vy > 0) {
+      c.vy -= CONFIG.gravity * dt;
+      c.jumpY = Math.max(0, c.jumpY + c.vy * dt);
+      if (c.jumpY <= 0.0001 && c.vy < 0) { c.vy = 0; spawnSplash(c.pos.x, c.pos.z, true); }
+    }
+    const airborne = c.jumpY > 0.05;
     // ---- in the water: free swimming (world space) ----
     let swimming = false, mx = 0, mz = 0;
-    if (c.knock <= 0) {
+    if (c.knock <= 0 && !airborne) {
       const ax = charAxes(c);
       if (ax.fwd || ax.strafe) {
         const n = Math.hypot(ax.fwd, ax.strafe);
@@ -376,8 +390,11 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       spawnWake(c.pos.x, c.pos.z, c.facing, 0.5);
       if (Math.random() < 0.5) spawnDroplets(c.pos.x, c.pos.z, 1, 1.3, 1.5);
     }
-    // bobbing at the surface; the prone paddling pose is the ragdoll's
-    c.mesh.position.set(c.pos.x, 0.18 + Math.sin(t * 3 + ci) * 0.08, c.pos.z);
+    // bobbing at the surface — or still dropping in (the body falls with the eye)
+    const meshY = airborne
+      ? Math.max(0.18, WATER_EYE + c.jumpY - CONFIG.eyeHeight)
+      : 0.18 + Math.sin(t * 3 + ci) * 0.08;
+    c.mesh.position.set(c.pos.x, meshY, c.pos.z);
     c.mesh.rotation.set(0, c.facing, 0);
     // climb back up ONLY when deliberately swimming INTO the hull
     const lp = worldToLocal2(c.pos);

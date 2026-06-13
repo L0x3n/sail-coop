@@ -55,14 +55,19 @@
   </div>
 </div>
 <div id="modeSelect">
-  <h1>SAIL TOGETHER!</h1>
-  <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
-    tack upwind, and run cargo to the green flag for gold.<br>
-    Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
-  <button id="btnSolo">Solo — singlehand her</button>
-  <button id="btnHost">Host online co-op</button>
-  <div class="joinrow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a matey</button></div>
-  <div id="netStatus" class="sub"></div>
+  <div class="menuTitle">
+    <h1>SAIL&nbsp;TOGETHER</h1>
+    <div class="tagline">First-person pirates · one stubborn boat · run cargo for gold</div>
+  </div>
+  <div class="menuCard">
+    <button id="btnSolo" class="menubtn primary">🧭&nbsp; Singleplayer</button>
+    <button id="btnHost" class="menubtn">⚓&nbsp; Host online game</button>
+    <div class="joinrow">
+      <input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off">
+      <button id="btnJoin" class="menubtn">🪢&nbsp; Join matey</button>
+    </div>
+    <div id="netStatus"></div>
+  </div>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>
