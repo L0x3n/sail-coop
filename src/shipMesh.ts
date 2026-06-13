@@ -21,12 +21,13 @@ export const heelGroup = new THREE.Group();
 boatGroup.add(heelGroup);
 scene.add(boatGroup);
 
-const woodMat = new THREE.MeshLambertMaterial({ color: 0x8a5a33 });
-const woodDark = new THREE.MeshLambertMaterial({ color: 0x5d3a20 });
-const woodPale = new THREE.MeshLambertMaterial({ color: 0xa9764a });
+const woodMat = new THREE.MeshLambertMaterial({ color: 0x7d4f2a });
+const woodDark = new THREE.MeshLambertMaterial({ color: 0x492c16 });
+const woodPale = new THREE.MeshLambertMaterial({ color: 0xb5824c });
+const railMat = new THREE.MeshLambertMaterial({ color: 0x2f6e66 });   // painted trim accent
 const ropeMat = new THREE.MeshLambertMaterial({ color: 0x4a3826 });
 const hullMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-const deckTex = makePlankTexture('#a9764a', '#7a5232');
+const deckTex = makePlankTexture('#b07d42', '#6a4326');               // higher-contrast caulking
 const deckMat = new THREE.MeshLambertMaterial({ map: deckTex });
 const sailMat = new THREE.MeshLambertMaterial({ map: makeSailTexture(), side: THREE.DoubleSide });
 const jibMat = new THREE.MeshLambertMaterial({ color: 0xf3eddc, side: THREE.DoubleSide });
@@ -163,7 +164,7 @@ export function buildShip(S: number) {
         panel.position.set(x, DECK_Y + 0.25, zc);
         panel.rotation.y = side * Math.atan(slope);
         R.add(panel);
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.7), woodPale);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.06, 0.7), railMat);
         cap.position.set(x, DECK_Y + 0.52, zc);
         cap.rotation.y = panel.rotation.y;
         R.add(cap);
@@ -172,7 +173,7 @@ export function buildShip(S: number) {
     const stern = new THREE.Mesh(new THREE.BoxGeometry(2.7 * S, 0.55, 0.1), woodMat);
     stern.position.set(0, DECK_Y + 0.27, -3.92 * S);
     R.add(stern);
-    const sternCap = new THREE.Mesh(new THREE.BoxGeometry(2.8 * S, 0.06, 0.18), woodPale);
+    const sternCap = new THREE.Mesh(new THREE.BoxGeometry(2.8 * S, 0.07, 0.2), railMat);
     sternCap.position.set(0, DECK_Y + 0.56, -3.92 * S);
     R.add(sternCap);
   }

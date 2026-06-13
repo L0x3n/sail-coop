@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { scene, sun, SKY } from './scene';
-import { wind, env } from './state';
+import { wind, env, boat, layout } from './state';
 import { makeSeaFoamTexture } from './textures';
-import { PATCH, heightTexture, updateOcean } from './fftOcean';
+import { PATCH, heightTexture, oceanHeight, updateOcean } from './fftOcean';
 
 /* =========================== water ===========================
    Three interchangeable surfaces (Q toggles). FLAT and FANCY are
@@ -53,6 +53,8 @@ export const fancyUniforms = {
   uSky: { value: new THREE.Color(SKY) },
   uFoam: { value: makeSeaFoamTexture() },
   uFogNear: { value: 260 }, uFogFar: { value: 850 },
+  // the boat carves a calm pocket so waves never wash over the deck
+  uBoat: { value: new THREE.Vector2(0, 0) }, uBoatY: { value: 0 }, uBoatR: { value: 12 },
 };
 /* the lit surface — shared by the Gerstner (fancy) and FFT meshes. It reads
    vNrm + vCrest + vPos from whichever vertex shader produced the surface. */
@@ -113,6 +115,7 @@ const fancyMat = new THREE.ShaderMaterial({
   uniforms: fancyUniforms,
   vertexShader: `
     uniform float uTime; uniform float uSwell; uniform vec2 uOffset;
+    uniform vec2 uBoat; uniform float uBoatY; uniform float uBoatR;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     vec3 gerstner(vec2 d, float steep, float len, vec3 p, inout vec3 tang, inout vec3 binc) {
       float k = 6.28318 / len;
@@ -131,16 +134,20 @@ const fancyMat = new THREE.ShaderMaterial({
       vec3 base = p;
       vec3 off = vec3(0.0);
       // two long rollers carry the sea, the rest is texture on top of them
-      off += gerstner(vec2( 1.0, 0.35), 0.115 * uSwell, 52.0 + 22.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2(-0.45, 1.0), 0.125 * uSwell, 31.0 + 12.0 * (uSwell - 1.0), base, tang, binc);
-      off += gerstner(vec2( 0.85,-0.55), 0.115 * uSwell, 17.0, base, tang, binc);
-      off += gerstner(vec2( 0.15, 1.0),  0.095 * uSwell,  9.5, base, tang, binc);
-      off += gerstner(vec2(-0.9, -0.2),  0.065 * uSwell,  5.2, base, tang, binc);
-      off += gerstner(vec2( 0.55, 0.8),  0.045 * uSwell,  3.1, base, tang, binc);
+      off += gerstner(vec2( 1.0, 0.35), 0.095 * uSwell, 52.0 + 22.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2(-0.45, 1.0), 0.100 * uSwell, 31.0 + 12.0 * (uSwell - 1.0), base, tang, binc);
+      off += gerstner(vec2( 0.85,-0.55), 0.095 * uSwell, 17.0, base, tang, binc);
+      off += gerstner(vec2( 0.15, 1.0),  0.080 * uSwell,  9.5, base, tang, binc);
+      off += gerstner(vec2(-0.9, -0.2),  0.055 * uSwell,  5.2, base, tang, binc);
+      off += gerstner(vec2( 0.55, 0.8),  0.040 * uSwell,  3.1, base, tang, binc);
+      // calm pocket: the boat flattens the water it sits in (no waves over the deck)
+      float bf = smoothstep(uBoatR * 0.55, uBoatR * 1.3, length(base.xz - uBoat));
+      off.y = mix(uBoatY, off.y, bf);
+      off.x *= bf; off.z *= bf;
       p += off;
       p.xz -= uOffset;
       vCrest = off.y;
-      vNrm = normalize(cross(binc, tang));
+      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), normalize(cross(binc, tang)), bf));
       vec4 wp = modelMatrix * vec4(p, 1.0);
       vPos = wp.xyz;
       gl_Position = projectionMatrix * viewMatrix * wp;
@@ -166,6 +173,7 @@ const fftMat = new THREE.ShaderMaterial({
   uniforms: fftUniforms,
   vertexShader: `
     uniform sampler2D uHeight; uniform float uPatch;
+    uniform vec2 uBoat; uniform float uBoatY; uniform float uBoatR;
     varying vec3 vPos; varying vec3 vNrm; varying float vCrest;
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);   // world XZ before displacing
@@ -178,7 +186,11 @@ const fftMat = new THREE.ShaderMaterial({
       float hU = texture2D(uHeight, uv + vec2(0.0, e)).r;
       float dhx = (hR - hL) / (2.0 * e * uPatch);      // slope in world space
       float dhz = (hU - hD) / (2.0 * e * uPatch);
-      vNrm = normalize(vec3(-dhx, 1.0, -dhz));
+      vec3 nrm = normalize(vec3(-dhx, 1.0, -dhz));
+      // calm pocket: flatten the water the boat displaces toward its own level
+      float bf = smoothstep(uBoatR * 0.55, uBoatR * 1.3, length(wp.xz - uBoat));
+      h = mix(uBoatY, h, bf);
+      vNrm = normalize(mix(vec3(0.0, 1.0, 0.0), nrm, bf));
       vCrest = h;
       wp.y += h;
       vPos = wp.xyz;
@@ -197,13 +209,18 @@ scene.add(fftWaterMesh);
 
 export function updateWater(t: number, cx: number, cz: number) {
   fancyUniforms.uTime.value = t;                          // shared by fancy + fft (ripples/foam)
+  // the calm-pocket follows the boat (shared by both wave shaders)
+  fancyUniforms.uBoat.value.set(boat.pos.x, boat.pos.z);
+  fancyUniforms.uBoatR.value = layout.hullL * 0.8;
   if (waterMode === 1) {
     fancyWaterMesh.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
     fancyUniforms.uOffset.value.set(fancyWaterMesh.position.x, fancyWaterMesh.position.z);
+    fancyUniforms.uBoatY.value = 0;                       // flatten to sea level (cosmetic bob keeps clearance)
   } else if (waterMode === 2) {
     fftWaterMesh.position.set(Math.round(cx / 40) * 40, 0, Math.round(cz / 40) * 40);
     // evolve the spectrum: amplitude rides the sea state; the boat reads the same field
     updateOcean(t, wind.angle, wind.strength, Math.min(1.8, Math.max(0.6, env.swell)));
+    fancyUniforms.uBoatY.value = oceanHeight(boat.pos.x, boat.pos.z);   // flatten to the boat's heave
   } else {
     updateFlatWater(t, cx, cz);
   }
