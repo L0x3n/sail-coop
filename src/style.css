@@ -114,5 +114,33 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
            background: #1d4ed8; color: #fff; cursor: pointer; }
 .shoprow button:disabled { background: rgba(255,255,255,.12); cursor: default; opacity: .7; }
 #shopFoot { font-size: 11px; opacity: .6; margin-top: 10px; text-align: center; }
+/* the job board panel */
+#questWrap { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+            background: rgba(3,14,26,.7); z-index: 26; pointer-events: auto; }
+#questPanel { width: 540px; max-width: 92vw; max-height: 84vh; overflow-y: auto; background: rgba(8,28,48,.97);
+             border: 2px solid rgba(116,192,252,.5); border-radius: 14px; padding: 14px 16px;
+             color: #fff; font-family: Consolas, monospace; }
+#questHead { display: flex; align-items: center; font-size: 20px; margin-bottom: 12px; color: #ffd95e; }
+#questHead button { margin-left: auto; font-family: inherit; font-size: 16px; background: none; border: 1px solid
+             rgba(255,255,255,.4); color: #fff; border-radius: 6px; cursor: pointer; padding: 2px 8px; }
+.questrow { display: flex; align-items: center; gap: 12px; padding: 11px 8px;
+             border-bottom: 1px solid rgba(255,255,255,.12); }
+.questrow.active { background: rgba(105,219,124,.12); border-radius: 8px; }
+.questrow.locked { opacity: .55; }
+.qdir { font-size: 26px; color: #74c0fc; width: 26px; text-align: center; flex: none; }
+.qinfo { flex: 1; min-width: 0; }
+.qname { font-size: 17px; font-weight: bold; }
+.qdiff { font-size: 10px; font-weight: bold; color: #07121e; padding: 1px 6px; border-radius: 10px;
+             vertical-align: middle; margin-left: 4px; }
+.qdesc { font-size: 12px; opacity: .82; line-height: 1.4; margin-top: 2px; }
+.qlock { color: #ffb0b0; opacity: 1; }
+.qpay { text-align: right; flex: none; }
+.qpay b { font-size: 20px; color: #ffd43b; }
+.qpay small { opacity: .7; }
+.qload { font-size: 11px; opacity: .65; }
+.questrow > button { flex: none; min-width: 92px; font-family: inherit; font-size: 14px; padding: 8px 10px;
+             border-radius: 8px; border: 1px solid rgba(255,255,255,.35); background: #1d4ed8; color: #fff; cursor: pointer; }
+.questrow > button:disabled { background: rgba(255,255,255,.12); cursor: default; }
+#questFoot { font-size: 11px; opacity: .6; margin-top: 12px; text-align: center; }
 #bigmap { border: 3px solid rgba(255,255,255,.35); border-radius: 14px;
           box-shadow: 0 12px 60px rgba(0,0,0,.55); }

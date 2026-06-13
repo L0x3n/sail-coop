@@ -105,6 +105,7 @@ export type NetMsg =
   | { k: 'buy'; id: string }                    // matey asks the host to buy/equip
   | { k: 'hat'; id: string }                    // matey picked a hat for themselves
   | { k: 'boat'; id: string }                   // host switched the hull
+  | { k: 'route'; i: number }                   // matey picked a job at the board
   | { k: 'boom'; x: number; y: number; z: number; vx: number; vy: number; vz: number } // cannon fired
   | { k: 'reset' }
   | { k: 'restart?' };

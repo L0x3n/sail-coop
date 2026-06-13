@@ -10,6 +10,7 @@ import { buildWorld, islandPos, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
 import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
+import { pickRoute, questOpen, refreshQuest, setQuestHandlers, toggleQuest } from './quest';
 import { spawnDroplets, spawnWake, updateBowWave, updateSplash, updateStreaks, updateWake } from './effects';
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
@@ -28,7 +29,7 @@ import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
-  netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap,
+  netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap, sendRoute,
   startHost, startJoin, startSolo,
 } from './net';
 import { getInteract } from './hands';
@@ -73,9 +74,14 @@ function handleLocalKeys() {
     if (code === 'KeyH' || code === 'Slash') toggleHelp();
     if (code === 'KeyE' && !session.docked) {
       if (shopOpen) { toggleShop(); }
-      else if (getInteract(myChar())?.kind === 'shop') { toggleShop(); }   // the panel is local
-      else if (netRole === 'guest') sendGrab();   // host runs the E-interaction
-      else pressE(p1);
+      else if (questOpen) { toggleQuest(); }
+      else {
+        const k = getInteract(myChar())?.kind;
+        if (k === 'shop') toggleShop();            // both panels are local to each player
+        else if (k === 'route') toggleQuest();
+        else if (netRole === 'guest') sendGrab();  // host runs the E-interaction
+        else pressE(p1);
+      }
     }
     if (code === 'KeyF' && !session.docked) {
       if (netRole === 'guest') sendHandsEdge();   // host simulates hands too
@@ -184,6 +190,7 @@ function visualStep(dt: number) {
   updateBargeVisual(t);
   updateHats(dt, t);
   if (shopOpen) refreshShop();
+  if (questOpen) refreshQuest();
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
   audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));
@@ -225,6 +232,7 @@ setShopHandlers(
   id => { if (netRole === 'guest') sendBuy(id); else tryBuy(id); },
   style => { if (netRole === 'guest') sendHat(style); else equipHat(0, style); },
 );
+setQuestHandlers(i => { if (netRole === 'guest') sendRoute(i); else pickRoute(i); });
 btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(startBoat()); });
 btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(startBoat()); });
 btnJoin.addEventListener('click', () => { audio.ensureAudio(); startJoin(joinCodeEl.value); });

@@ -5,6 +5,7 @@ import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
 import { boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { equipHat, setShipRelay, tryBuy } from './shop';
+import { pickRoute } from './quest';
 import { setHat } from './pirates';
 import { buildShip, setBoatPreset } from './shipMesh';
 import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
@@ -143,6 +144,8 @@ export function hostOnData(m: NetMsg) {
     tryBuy(m.id);
   } else if (m.k === 'hat') {
     equipHat(1, m.id);
+  } else if (m.k === 'route') {
+    pickRoute(m.i);
   } else if (m.k === 'restart?') {
     resetState();
     resetHands(guestHere);
@@ -356,6 +359,7 @@ export function sendGrab() { netSend({ k: 'g' }); }
 export function sendHandsEdge() { netSend({ k: 'f' }); }
 export function sendMopTap() { netSend({ k: 'm0' }); }
 export function sendBuy(id: string) { netSend({ k: 'buy', id }); }
+export function sendRoute(i: number) { netSend({ k: 'route', i }); }
 export function sendHat(id: string) { netSend({ k: 'hat', id }); }
 
 export function requestRestart() {

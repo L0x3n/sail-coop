@@ -44,12 +44,14 @@ export interface RouteDef {
   name: string; pay: number; desc: string;
   del: { x: number; z: number };
   locked?: () => boolean;
+  lockHint?: string;
 }
 export const ROUTES: RouteDef[] = [
-  { name: 'Palm Run', pay: 10, desc: 'short reach, easy money', del: { x: 117, z: -70 } },
-  { name: 'Sandbar Hop', pay: 16, desc: 'short but dead upwind', del: { x: 95, z: -236 } },
-  { name: 'Skerry Slog', pay: 24, desc: 'long beat past the rocks', del: { x: -132, z: -150 } },
-  { name: 'North Light', pay: 32, desc: 'the long northern haul', del: { x: -96, z: 40 }, locked: () => !owned.chartNorth },
+  { name: 'Palm Run', pay: 10, desc: 'a gentle reach — easy money for a first run', del: { x: 117, z: -70 } },
+  { name: 'Sandbar Hop', pay: 16, desc: 'short, but dead upwind — you will have to tack', del: { x: 95, z: -236 } },
+  { name: 'Skerry Slog', pay: 24, desc: 'a long beat out past the rocks', del: { x: -132, z: -150 } },
+  { name: 'North Light', pay: 32, desc: 'the long northern haul — best pay on the board', del: { x: -96, z: 40 },
+    locked: () => !owned.chartNorth, lockHint: 'buy the Northern chart at the chandler' },
 ];
 export let routeIdx = 0;
 export function setRoute(i: number) {
@@ -544,21 +546,39 @@ export function buildWorld() {
   scene.add(dockArrow);
   repositionDeliveryMarkers();
 
-  // the route board on the home pier
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.7, 6), woodDark);
-  post.position.set(BOARD_SPOT.x, SHORE_Y + 0.85, BOARD_SPOT.z);
-  scene.add(post);
-  const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.08),
-    new THREE.MeshLambertMaterial({ color: 0xa9764a }));
-  board.position.set(BOARD_SPOT.x, SHORE_Y + 1.5, BOARD_SPOT.z);
-  board.rotation.y = Math.PI / 2;
-  scene.add(board);
-  for (let i = 0; i < 3; i++) {
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.14, 0.03),
-      new THREE.MeshLambertMaterial({ color: [0x69db7c, 0xffd43b, 0xff8787][i] }));
-    strip.position.set(BOARD_SPOT.x + 0.06, SHORE_Y + 1.72 - i * 0.22, BOARD_SPOT.z);
-    strip.rotation.y = Math.PI / 2;
-    scene.add(strip);
+  // the job board on the home pier — a friendly notice board with pinned jobs
+  {
+    const bx = BOARD_SPOT.x, bz = BOARD_SPOT.z, by = SHORE_Y;
+    const faceMat = new THREE.MeshLambertMaterial({ color: 0xcaa46e });
+    for (const s of [-0.6, 0.6]) {                       // two legs
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.5, 6), woodDark);
+      leg.position.set(bx, by + 0.75, bz + s);
+      scene.add(leg);
+    }
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 1.6), woodDark);
+    frame.position.set(bx, by + 1.62, bz);
+    scene.add(frame);
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.84, 1.42), faceMat);
+    face.position.set(bx + 0.02, by + 1.62, bz);
+    scene.add(face);
+    const header = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.22, 1.6), new THREE.MeshLambertMaterial({ color: 0x40c057 }));
+    header.position.set(bx + 0.01, by + 2.18, bz);
+    scene.add(header);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 1.78), woodDark);
+    roof.position.set(bx, by + 2.31, bz);
+    scene.add(roof);
+    // pinned job notes (2x2), with coloured pins
+    const ny = [0.2, 0.2, -0.18, -0.18], nz = [-0.34, 0.34, -0.34, 0.34];
+    const paper = [0xf4efe2, 0xfff3cf, 0xeaf6ff, 0xffe3e3], pins = [0xff6b6b, 0x4dabf7, 0xffd43b, 0x69db7c];
+    for (let i = 0; i < 4; i++) {
+      const note = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.3), new THREE.MeshLambertMaterial({ color: paper[i] }));
+      note.position.set(bx + 0.1, by + 1.62 + ny[i], bz + nz[i]);
+      note.rotation.x = (i - 1.5) * 0.05;
+      scene.add(note);
+      const pin = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), new THREE.MeshLambertMaterial({ color: pins[i] }));
+      pin.position.set(bx + 0.13, by + 1.62 + ny[i] + 0.1, bz + nz[i]);
+      scene.add(pin);
+    }
   }
 
   // the chandler's stall (the chaos shop)

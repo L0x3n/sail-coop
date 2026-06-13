@@ -8,7 +8,7 @@ import { mopSplat, nearestSplat } from './critters';
 import { anyLashable, lashed, nearestCrateFor, pickUp, putDown, setLashed } from './cargo';
 import { barge, bargeActive, freeSlot, nearBarge, stowCrate } from './barge';
 import { cannon } from './cannon';
-import { BOARD_SPOT, DELIVERY, ROUTES, SHOP_SPOT, nextUnlockedRoute, routeIdx, setRoute } from './world';
+import { BOARD_SPOT, DELIVERY, ROUTES, SHOP_SPOT, routeIdx } from './world';
 import { spawnSplash } from './effects';
 import { localDrag } from './input';
 import { toast } from './hud';
@@ -182,10 +182,9 @@ export function getInteract(c: Char): { kind: InteractKind; label: string } | nu
   if (c.mode === 'shore' && Math.hypot(c.pos.x - SHOP_SPOT.x, c.pos.z - SHOP_SPOT.z) < 2.0) {
     return { kind: 'shop', label: 'E — browse the chandler\'s wares' };
   }
-  // the route board on the home pier
+  // the job board on the home pier — E pulls up the visual board
   if (c.mode === 'shore' && Math.hypot(c.pos.x - BOARD_SPOT.x, c.pos.z - BOARD_SPOT.z) < 1.8) {
-    const next = ROUTES[nextUnlockedRoute(routeIdx)];
-    return { kind: 'route', label: 'E — route: ' + ROUTES[routeIdx].name + ' (' + ROUTES[routeIdx].pay + 'g/crate) → switch to ' + next.name };
+    return { kind: 'route', label: 'E — read the job board (now: ' + ROUTES[routeIdx].name + ' · ' + ROUTES[routeIdx].pay + 'g/crate)' };
   }
   // pick something up: crates first, then the mop
   const nc = nearestCrateFor(c);
@@ -266,14 +265,9 @@ export function pressE(c: Char) {
       audio.creak(1);
       break;
     }
-    case 'route': {
-      setRoute(nextUnlockedRoute(routeIdx));
-      const r = ROUTES[routeIdx];
-      toast('Route: ' + r.name + ' — ' + r.pay + 'g/crate (' + r.desc + ')', '#ffd95e');
-      break;
-    }
+    case 'route':
     case 'shop':
-      break;   // opened locally in handleLocalKeys (each player gets their own panel)
+      break;   // both open a local panel in handleLocalKeys (each player gets their own)
     case 'lash':
       setLashed(!lashed());
       break;
