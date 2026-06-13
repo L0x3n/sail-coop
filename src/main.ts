@@ -70,11 +70,10 @@ enableShadows([flatWater, fancyWaterMesh, fftWaterMesh, skyDome]);
    one throwaway frame behind the menu, then restore visibility. */
 function warmUpShaders() {
   const rehide: { visible: boolean }[] = [];
-  scene.traverse((o: any) => {
-    if ((o.isMesh || o.isPoints || o.isSprite || o.isLine) && o.visible === false) {
-      o.visible = true; rehide.push(o);
-    }
-  });
+  // force EVERY object visible — incl. parent groups (rain, effects), since an
+  // invisible parent makes the renderer skip the whole subtree and its shaders
+  // never compile
+  scene.traverse((o: any) => { if (o.visible === false) { o.visible = true; rehide.push(o); } });
   try { renderer.compile(scene, cam1); renderer.render(scene, cam1); } catch { /* ignore */ }
   for (const o of rehide) o.visible = false;
 }

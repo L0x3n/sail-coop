@@ -6,7 +6,7 @@ export const renderer = new THREE.WebGLRenderer({ antialias: true });
 // never 0x0 (hidden/headless windows report zero size before first layout)
 export const viewSize = () => ({ w: Math.max(320, innerWidth), h: Math.max(240, innerHeight) });
 renderer.setSize(viewSize().w, viewSize().h);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // 1.5 is plenty sharp; big fill-rate win on hi-DPI
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -28,7 +28,7 @@ scene.add(sun);
 // real-time shadows: the shadow box follows the CAMERA (set each frame), so
 // land — islands, palms, piers — casts shadows whether you're aboard or ashore
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.mapSize.set(2048, 2048);   // 92-unit box → ~4.5cm/texel, ample for stylized shadows; halves shadow-pass cost
 sun.shadow.camera.near = 40; sun.shadow.camera.far = 320;
 sun.shadow.camera.left = -46; sun.shadow.camera.right = 46;
 sun.shadow.camera.top = 46; sun.shadow.camera.bottom = -46;
