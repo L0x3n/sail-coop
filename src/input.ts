@@ -20,8 +20,12 @@ window.addEventListener('keyup', e => { keys[e.code] = false; });
 /* --- mouse look: pointer lock when the browser allows it, drag-to-look fallback
        otherwise (embedded panels/iframes often deny pointer lock silently) --- */
 export let dragLook = false;
+/* when a full-screen panel (shop / job board / help / map) is open, let the
+   mouse click its buttons instead of capturing the pointer for look/use */
+let modalOpen = () => false;
+export function setModalGetter(fn: () => boolean) { modalOpen = fn; }
 document.addEventListener('mousedown', e => {
-  if (!gameStarted()) return;
+  if (!gameStarted() || modalOpen()) return;
   dragLook = true;
   if (e.button === 0) {                     // LMB doubles as the "use" button (scrub/whack)
     if (!keys['Mouse0']) pressedQueue.push('Mouse0');

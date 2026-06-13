@@ -47,10 +47,10 @@ export const CONFIG = {
   wobbleSlide: 0.28,       // tiny always-on wave wobble force on deck
 
   // --- jumping ---
-  jumpVel: 5.2,            // takeoff speed (clears the 0.62-high rail)
-  gravity: 14,             // pulls jumpers back down to the deck
-  airControl: 0.45,        // walk authority while airborne
-  jumpBoost: 1.5,          // horizontal hop impulse at takeoff (vault the rail from standstill)
+  jumpVel: 4.8,            // takeoff speed: apex ~0.72 — clears the 0.62 rail, less floaty than the old 5.2
+  gravity: 15,             // pulls jumpers back down a touch faster
+  airControl: 0.34,        // walk authority while airborne (less mid-air drift)
+  jumpBoost: 0.85,         // horizontal hop impulse at takeoff (smaller vault)
 
   // --- swimming leash ---
   swimLeash: 50,           // meters from the boat before the sea washes you back aboard

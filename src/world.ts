@@ -109,6 +109,16 @@ export const LANDS = [
 /* solid things you can't walk through on land (hills, houses, the lighthouse) */
 export const landBlockers: { x: number; z: number; r: number }[] = [];
 
+/* the village shopkeepers, registered for a gentle idle bob + look-around */
+const npcFigures: { g: THREE.Group; headG: THREE.Group; ph: number }[] = [];
+export function updateNPCs(t: number) {
+  for (const n of npcFigures) {
+    n.g.position.y = Math.sin(t * 1.6 + n.ph) * 0.045;             // breathe / bob
+    n.headG.rotation.y = Math.sin(t * 0.55 + n.ph) * 0.34;         // glance around
+    n.headG.rotation.z = Math.sin(t * 1.3 + n.ph * 1.7) * 0.05;    // little head tilt
+  }
+}
+
 /* ---- animated shore: breaking foam at the waterline + caustics on the shelf ---- */
 const shoreFoamMat = new THREE.ShaderMaterial({
   uniforms: { uTime: { value: 0 }, uFoam: { value: makeSeaFoamTexture() } },
@@ -646,39 +656,65 @@ export function buildWorld() {
       scene.add(s);
     };
 
-    // --- a simple standing shopkeeper, facing the harbour (+z) ---
-    const buildNPC = (x: number, z: number, shirt: number, accent: number) => {
+    // --- a round, googly-eyed shopkeeper with a trade prop, facing the harbour ---
+    const skin = new THREE.MeshLambertMaterial({ color: 0xeab690 });
+    const dark = new THREE.MeshBasicMaterial({ color: 0x22201e });
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const buildNPC = (x: number, z: number, shirt: number, accent: number, role: 'ship' | 'hat' | 'mop') => {
       const g = new THREE.Group();
-      const skin = new THREE.MeshLambertMaterial({ color: 0xe8b48a });
       const shirtMat = new THREE.MeshLambertMaterial({ color: shirt });
-      for (const lx of [-0.13, 0.13]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 6), new THREE.MeshLambertMaterial({ color: 0x39394a }));
-        leg.position.set(lx, GY + 0.35, 0); g.add(leg);
+      for (const lx of [-0.15, 0.15]) {                       // stubby legs
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.1, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0x39394a }));
+        leg.position.set(lx, GY + 0.3, 0); g.add(leg);
       }
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.28, 0.95, 8), shirtMat);
-      body.position.y = GY + 1.18; g.add(body);
-      for (const ax of [-0.37, 0.37]) {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.72, 6), shirtMat);
-        arm.position.set(ax, GY + 1.22, 0); arm.rotation.z = ax > 0 ? -0.16 : 0.16; g.add(arm);
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.44, 12, 9), shirtMat);   // round belly
+      body.scale.set(1, 1.05, 0.92); body.position.y = GY + 1.0; g.add(body);
+      for (const ax of [-1, 1]) {                             // arms + little hands
+        const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.5, 3, 6), shirtMat);
+        arm.position.set(ax * 0.44, GY + 1.04, 0); arm.rotation.z = ax * 0.32; g.add(arm);
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 7, 6), skin);
+        hand.position.set(ax * 0.6, GY + 0.7, 0.04); g.add(hand);
       }
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 8), skin);
-      head.position.y = GY + 1.92; g.add(head);
-      for (const ex of [-0.1, 0.1]) {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), new THREE.MeshBasicMaterial({ color: 0x222020 }));
-        eye.position.set(ex, GY + 1.96, 0.23); eye.userData.noShadow = true; g.add(eye);
+      const headG = new THREE.Group(); headG.position.y = GY + 1.66; g.add(headG);
+      headG.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 10), skin));
+      for (const ex of [-0.14, 0.14]) {                       // big googly eyes
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), white);
+        eye.position.set(ex, 0.07, 0.27); eye.userData.noShadow = true; headG.add(eye);
+        const pup = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), dark);
+        pup.position.set(ex, 0.05, 0.38); pup.userData.noShadow = true; headG.add(pup);
+        const brow = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.045, 0.05), dark);
+        brow.position.set(ex, 0.23, 0.31); brow.rotation.z = ex < 0 ? 0.2 : -0.2; headG.add(brow);
       }
-      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.18, 10), new THREE.MeshLambertMaterial({ color: accent }));
-      hat.position.y = GY + 2.16; g.add(hat);
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 12), new THREE.MeshLambertMaterial({ color: accent }));
-      brim.position.y = GY + 2.08; g.add(brim);
-      g.position.set(x, 0, z);
+      const smile = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.028, 6, 12, Math.PI), dark);
+      smile.position.set(0, -0.11, 0.31); smile.rotation.x = Math.PI; headG.add(smile);
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), skin);
+      nose.position.set(0, -0.01, 0.35); headG.add(nose);
+      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.24, 12), new THREE.MeshLambertMaterial({ color: accent }));
+      hat.position.set(0, 0.34, 0); headG.add(hat);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.04, 14), new THREE.MeshLambertMaterial({ color: accent }));
+      brim.position.set(0, 0.24, 0); headG.add(brim);
+      // a prop that signals the trade, held in the right hand
+      if (role === 'mop') {
+        const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 6), new THREE.MeshLambertMaterial({ color: 0xa9764a }));
+        stick.position.set(0.62, GY + 1.0, 0.1); g.add(stick);
+        const mh = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.22, 8), new THREE.MeshLambertMaterial({ color: 0xe8e2d0 }));
+        mh.position.set(0.62, GY + 0.34, 0.1); mh.rotation.x = Math.PI; g.add(mh);
+      } else if (role === 'ship') {
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.18), new THREE.MeshLambertMaterial({ color: 0x8a5a33 }));
+        plank.position.set(0.62, GY + 0.72, 0.16); plank.rotation.z = 0.35; g.add(plank);
+      } else {
+        const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.23, 0.18, 10), new THREE.MeshLambertMaterial({ color: 0xff6b6b }));
+        spare.position.set(0.64, GY + 0.78, 0.2); g.add(spare);
+      }
+      g.position.set(x, 0, z);                                // faces +z (the harbour / arriving players)
       scene.add(g);
+      npcFigures.push({ g, headG, ph: x * 0.7 + z });
     };
 
     // place the three shopkeepers + their stalls (positions match world.NPCS)
-    buildNPC(-13, -239, 0x3a6ea5, 0x5d3a20);  buildStall(-13, -240.6, 0x2f6e66);   // Shipwright
-    buildNPC(0, -236, 0xb0476b, 0xffd43b);    buildStall(0, -237.6, 0xc0392b);     // Outfitter
-    buildNPC(13, -239, 0x4a9e54, 0xe8e2d0);   buildStall(13, -240.6, 0x4dabf7);    // Deckhand
+    buildNPC(-13, -239, 0x3a6ea5, 0x5d3a20, 'ship');  buildStall(-13, -240.6, 0x2f6e66);   // Shipwright
+    buildNPC(0, -236, 0xb0476b, 0xffd43b, 'hat');     buildStall(0, -237.6, 0xc0392b);     // Outfitter
+    buildNPC(13, -239, 0x4a9e54, 0xe8e2d0, 'mop');    buildStall(13, -240.6, 0x4dabf7);    // Deckhand
     // a hanging sign over the square
     const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 3.2, 7), woodDark);
     signPost.position.set(0, GY + 1.6, -231); scene.add(signPost);

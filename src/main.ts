@@ -2,11 +2,11 @@ import './style.css';
 import { BOATS, CONFIG } from './config';
 import { clamp, len2, rightVec, v2, wrapPi } from './mathUtil';
 import { boat, charActive, chars, env, game, layout, myChar, netRole, guestHere, owned, p1, p2, prefs, registerChars, session, splats, wind } from './state';
-import { keys, pressedQueue } from './input';
+import { keys, pressedQueue, setModalGetter } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
 import { fancyUniforms, fancyWaterMesh, fftWaterMesh, flatWater, cycleWater, updateWater, waterMode } from './water';
-import { buildWorld, islandPos, updateShores } from './world';
+import { buildWorld, islandPos, updateNPCs, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
 import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
@@ -26,7 +26,7 @@ import { balls, cannon, fireCannon, updateCannon, updateCannonVisuals } from './
 import { barge, updateBarge, updateBargeVisual } from './barge';
 import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
 import { drawMap, mapOpen, toggleMap } from './map';
-import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
+import { drawHud, btnHost, btnJoin, btnSolo, helpOpen, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
   netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap, sendRoute,
@@ -184,6 +184,7 @@ function visualStep(dt: number) {
   updateShores(t);
   updateWeatherVisuals(dt);
   updateCritters(dt, t);
+  updateNPCs(t);                       // the shopkeepers bob & glance about
   updateMopVisual(t);
   updateCargoVisual(t);
   updateCannonVisuals(dt);
@@ -202,9 +203,20 @@ function renderViews() {
   renderer.setViewport(0, 0, v.w, v.h);
   fancyUniforms.uCamPos.value.copy(cam1.position);
   const me = myChar();
-  me.mesh.visible = false;                 // never render your own body in first person
+  // First person normally hides your whole body. But when your hands are busy —
+  // holding the mop or carrying a crate — show your arms + what's in them so you
+  // can watch yourself scrub/haul. We then hide ONLY the head, which the camera
+  // sits inside of (the eye is ~0.1 above the head's centre).
+  const meIdx = chars.indexOf(me);
+  const handsBusy = me.carry >= 0 || mops.some(m => m.on && m.held === meIdx);
+  const head = handsBusy
+    ? (me.mesh.userData.parts as { headBone?: { visible: boolean } } | undefined)?.headBone
+    : undefined;
+  if (head) head.visible = false;          // keep the body, drop just the head
+  else me.mesh.visible = false;            // empty-handed: hide the whole body as before
   renderer.render(scene, cam1);
-  me.mesh.visible = charActive(me);
+  if (head) head.visible = true;
+  else me.mesh.visible = charActive(me);
 }
 
 /* =========================== main loop =========================== */
@@ -233,6 +245,8 @@ setShopHandlers(
   style => { if (netRole === 'guest') sendHat(style); else equipHat(0, style); },
 );
 setQuestHandlers(i => { if (netRole === 'guest') sendRoute(i); else pickRoute(i); });
+// while any panel is open, the mouse clicks its buttons instead of capturing
+setModalGetter(() => shopOpen || questOpen || helpOpen() || mapOpen);
 btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(startBoat()); });
 btnHost.addEventListener('click', () => { audio.ensureAudio(); startHost(startBoat()); });
 btnJoin.addEventListener('click', () => { audio.ensureAudio(); startJoin(joinCodeEl.value); });
