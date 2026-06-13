@@ -25,7 +25,7 @@ import { balls, cannon, fireCannon, updateCannon, updateCannonVisuals } from './
 import { barge, updateBarge, updateBargeVisual } from './barge';
 import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
 import { drawMap, mapOpen, toggleMap } from './map';
-import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast } from './hud';
+import { drawHud, btnHost, btnJoin, btnSolo, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
   netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap,
@@ -70,6 +70,7 @@ function handleLocalKeys() {
     session.started = true;
     if (code === 'KeyQ') toast('Water: ' + cycleWater(), '#74c0fc');
     if (code === 'KeyM') toggleMap();
+    if (code === 'KeyH' || code === 'Slash') toggleHelp();
     if (code === 'KeyE' && !session.docked) {
       if (shopOpen) { toggleShop(); }
       else if (getInteract(myChar())?.kind === 'shop') { toggleShop(); }   // the panel is local

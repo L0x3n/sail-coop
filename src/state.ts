@@ -1,4 +1,4 @@
-import { v2 } from './mathUtil';
+import { v2, wrapPi } from './mathUtil';
 import { CONFIG, DECK_X, DECK_Z, GAPS, HULL_L, HULL_W } from './config';
 import type { Char } from './types';
 
@@ -90,6 +90,20 @@ export const boat = {
 };
 
 export const wind = { angle: 0, strength: CONFIG.windStrength }; // angle = direction wind blows TOWARD
+
+/* point of sail derived from wind vs heading — recomputed here (not read off
+   boat.noGo) so it's correct for the guest too, who never runs updateBoat.
+   d=180 means head-to-wind; offWind<noGoHalfAngle = in irons. */
+export function pointOfSail() {
+  const d = wrapPi(wind.angle - boat.yaw);
+  const offWind = 180 - Math.abs(d) * 180 / Math.PI;
+  return {
+    d,
+    offWind,
+    noGo: offWind < CONFIG.noGoHalfAngle,
+    idealBoom: Math.sign(d || 1) * (Math.PI - Math.abs(d)) / 2,
+  };
+}
 
 export const session = {
   runTime: 0,

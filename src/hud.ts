@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
-import { boat, chars, game, myChar, session, tuning, wind } from './state';
+import { boat, chars, game, myChar, pointOfSail, session, tuning, wind } from './state';
 import { getInteract } from './hands';
 import { cratesAboard, cratesLeft } from './cargo';
-import { DELIVERY } from './world';
+import { DELIVERY, ROUTES, routeIdx } from './world';
 import { dockedChime } from './audio';
 import { cam1 } from './scene';
 import { heelGroup } from './shipMesh';
@@ -30,7 +30,14 @@ const msgEl = el('msg'), msgTextEl = el('msgText');
 const struggleEl = el('struggle');
 const scrubRingEl = el('scrubRing');
 const mopHintEl = el('mopHint');
+const objectiveEl = el('objective'), waypointEl = el('waypoint'), trimCoachEl = el('trimCoach');
+const helpEl = el('help');
 const _projV = new THREE.Vector3();
+
+/* the Help (?) overlay */
+export function toggleHelp() { helpEl.style.display = helpEl.style.display === 'flex' ? 'none' : 'flex'; }
+export function helpOpen() { return helpEl.style.display === 'flex'; }
+el('helpClose').addEventListener('click', () => { helpEl.style.display = 'none'; });
 
 /* =========================== toast (+ relay hook for the host) =========================== */
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -59,7 +66,8 @@ function drawCompass() {
   ctx.strokeStyle = 'rgba(255,255,255,.8)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(c, c, 38, 0, TAU); ctx.stroke();
-  const a = wrapPi(wind.angle - boat.yaw);            // wind direction, relative to the bow
+  const ps = pointOfSail();
+  const a = ps.d;                                     // wind direction, relative to the bow
   // the NO-GO cone: point the bow into this red wedge and the sail won't drive (in irons).
   // it sits around where the wind comes FROM (opposite the blows-toward arrow).
   const wf = wrapPi(a + Math.PI);
@@ -68,7 +76,7 @@ function drawCompass() {
   ctx.beginPath(); ctx.moveTo(0, 0);
   ctx.arc(0, 0, 38, -Math.PI / 2 - ng, -Math.PI / 2 + ng);
   ctx.closePath();
-  ctx.fillStyle = boat.noGo ? 'rgba(255,70,70,.6)' : 'rgba(255,110,110,.2)';
+  ctx.fillStyle = ps.noGo ? 'rgba(255,70,70,.6)' : 'rgba(255,110,110,.2)';
   ctx.fill(); ctx.restore();
   // wind arrow: where the wind BLOWS TOWARD, relative to the bow
   ctx.save(); ctx.translate(c, c); ctx.rotate(-a + Math.PI);
@@ -86,7 +94,7 @@ function drawCompass() {
   ctx.fill();
   ctx.restore();
   // your bow is always 'up' — turns red when you're in irons
-  ctx.fillStyle = boat.noGo ? '#ff6b6b' : '#fff';
+  ctx.fillStyle = ps.noGo ? '#ff6b6b' : '#fff';
   ctx.beginPath(); ctx.moveTo(c, c - 41); ctx.lineTo(c - 4, c - 33); ctx.lineTo(c + 4, c - 33); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 11px Consolas';
@@ -180,4 +188,61 @@ export function drawHud(t: number) {
     const deg = Math.min(360, (me.scrubT / CONFIG.scrubTime) * 360);
     scrubRingEl.style.background = `conic-gradient(#69db7c ${deg}deg, rgba(255,255,255,.15) ${deg}deg)`;
   } else scrubRingEl.style.display = 'none';
+
+  // ---- objective banner: route · distance · ETA · cargo (distDel computed above) ----
+  if (session.inMenu || cratesLeft() === 0) {
+    objectiveEl.style.display = 'none';
+  } else {
+    objectiveEl.style.display = 'block';
+    const near = distDel < 40;
+    objectiveEl.classList.toggle('near', near);
+    if (near) {
+      objectiveEl.textContent = '⚑ ARRIVING — stop, drop anchor, carry crates onto the green flag';
+    } else {
+      const spd = len2(boat.vel);
+      const eta = spd > 0.5 ? ' · ~' + Math.round(distDel / spd) + 's' : '';
+      const dstr = distDel > 950 ? (distDel / 1000).toFixed(1) + 'km' : (distDel | 0) + 'm';
+      objectiveEl.textContent = '⚑ ' + ROUTES[routeIdx].name + ' · ' + dstr + eta
+        + ' · ' + cratesAboard() + ' aboard / ' + cratesLeft() + ' left';
+    }
+  }
+
+  // ---- off-screen waypoint arrow pointing to the delivery flag ----
+  if (session.inMenu) { waypointEl.style.display = 'none'; }
+  else {
+    _projV.set(DELIVERY.x, 2, DELIVERY.z); _projV.project(cam1);
+    let nx = _projV.x, ny = _projV.y;
+    const behind = _projV.z >= 1;
+    if (behind) { nx = -nx; ny = -ny; }
+    if (!behind && Math.abs(nx) < 0.9 && Math.abs(ny) < 0.9) {
+      waypointEl.style.display = 'none';                 // the in-world flag is on screen
+    } else {
+      const cx = innerWidth / 2, cy = innerHeight / 2;
+      const mlen = Math.hypot(nx, -ny) || 1;
+      const ux = nx / mlen, uy = -ny / mlen;             // screen space, y down
+      const scale = Math.min((cx - 64) / Math.max(1e-3, Math.abs(ux)), (cy - 64) / Math.max(1e-3, Math.abs(uy)));
+      waypointEl.style.display = 'block';
+      waypointEl.style.left = (cx + ux * scale) + 'px';
+      waypointEl.style.top = (cy + uy * scale) + 'px';
+      waypointEl.innerHTML = '<div class="wparrow" style="transform:rotate(' + Math.atan2(ux, -uy) + 'rad)">▲</div>' + (distDel | 0) + 'm';
+    }
+  }
+
+  // ---- sail trim coach: shown while manning the SAIL ----
+  if (!session.inMenu && me.station === 'sail') {
+    const ps = pointOfSail();
+    const power = clamp(boat.sailForce / Math.max(0.01, tuning.sailPower * wind.strength), 0, 1);
+    const delta = wrapPi(ps.idealBoom - boat.boomAngle);
+    let word: string, hint: string, col: string;
+    if (ps.noGo) { word = 'IN IRONS'; hint = 'steer away from the wind'; col = '#ff6b6b'; }
+    else if (power < 0.85) {
+      word = boat.luffing ? 'LUFFING' : 'ADJUST';
+      hint = delta > 0.03 ? 'hold D ▶' : delta < -0.03 ? '◀ hold A' : '';
+      col = power > 0.4 ? '#ffd43b' : '#ff8787';
+    } else { word = 'TRIMMED ✓'; hint = ''; col = '#51cf66'; }
+    trimCoachEl.style.display = 'block';
+    trimCoachEl.innerHTML = '<span style="color:' + col + '">SAIL ' + word + '</span>'
+      + '<span class="bar"><i style="width:' + (power * 100).toFixed(0) + '%;background:' + col + '"></i></span>'
+      + '<span style="color:' + col + '">' + hint + '</span>';
+  } else trimCoachEl.style.display = 'none';
 }

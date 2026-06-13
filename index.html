@@ -18,12 +18,28 @@
   <p id="msgText">Time: 0:00</p>
   <button id="restartBtn">Sail again</button>
 </div>
+<div id="objective" class="hud"></div>
+<div id="waypoint" class="hud"></div>
+<div id="trimCoach" class="hud"></div>
 <div id="toast" class="hud"></div>
 <div id="promptP1" class="sideprompt"></div>
 <div id="struggle" class="hud"></div>
 <div id="scrubRing" class="hud"><div id="scrubFill"></div></div>
 <div id="mopHint" class="hud"></div>
 <div id="netchip" class="hud"></div>
+<div id="helpHint" class="hud"><b>?</b> help</div>
+<div id="help" class="hud">
+  <div id="helpPanel">
+    <h2>HOW TO SAIL</h2>
+    <p><b>WASD</b> move · <b>mouse</b> look (click or drag) · <b>SPACE</b> jump · <b>E</b> interact</p>
+    <p><b>Get going:</b> step onto the boat, go to the bow and press <b>E</b> to raise the anchor, then man the <b>HELM</b> (wheel) and the <b>SAIL</b> (mast) with <b>E</b>. At a station, <b>A/D</b> steers / trims.</p>
+    <p><b>The wind:</b> you can't sail straight into it — the compass shows a <span style="color:#ff6b6b">red no-go cone</span>. Keep your bow out of it; zig-zag (tack) to work upwind.</p>
+    <p><b>The job:</b> load crates from the home pier, sail to the <span style="color:#69db7c">green flag</span>, stop &amp; drop anchor, then carry crates onto the circle for gold.</p>
+    <p><b>Hands:</b> <b>F</b> grab your matey (release = throw, mash F to escape). Mop: hold <b>LMB</b> scrub · tap <b>LMB</b> bonk · <b>F</b> throw.</p>
+    <p><b>M</b> map · <b>Q</b> water style · <b>N</b> sound · <b>?</b> close</p>
+    <button id="helpClose">Got it</button>
+  </div>
+</div>
 <div id="mapWrap"><canvas id="bigmap" width="560" height="560"></canvas></div>
 <div id="shopWrap">
   <div id="shopPanel">

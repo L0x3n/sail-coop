@@ -21,6 +21,32 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
 #msg button:hover { background: #37b24d; }
 #toast { left: 50%; top: 18%; transform: translateX(-50%); font-size: 26px; font-weight: bold;
          color: #ffe066; opacity: 0; transition: opacity .3s; }
+/* objective banner — top-center under the HUD bar */
+#objective { left: 50%; top: 92px; transform: translateX(-50%); display: none; white-space: nowrap;
+         font-size: 14px; font-weight: bold; color: #fff; background: rgba(0,20,40,.55);
+         border: 1px solid rgba(255,255,255,.18); padding: 5px 14px; border-radius: 20px; }
+#objective.near { color: #051; background: rgba(105,219,124,.92); border-color: rgba(255,255,255,.5); }
+/* off-screen waypoint arrow to the delivery flag */
+#waypoint { display: none; transform: translate(-50%,-50%); text-align: center; color: #69db7c;
+         text-shadow: 0 1px 4px rgba(0,0,0,.8); font-size: 12px; font-weight: bold; }
+#waypoint .wparrow { font-size: 30px; line-height: .8; }
+/* sail trim coach — low center, shown while at the sail station */
+#trimCoach { display: none; left: 50%; bottom: 15%; transform: translateX(-50%); white-space: nowrap;
+         font-size: 15px; font-weight: bold; background: rgba(0,20,40,.6); padding: 6px 14px; border-radius: 10px; }
+#trimCoach .bar { display: inline-block; width: 90px; height: 9px; border-radius: 5px; vertical-align: middle;
+         background: rgba(255,255,255,.18); margin: 0 8px; overflow: hidden; }
+#trimCoach .bar i { display: block; height: 100%; }
+/* help overlay + its hint chip */
+#helpHint { right: 12px; bottom: 10px; font-size: 12px; opacity: .7; }
+#help { display: none; position: fixed; inset: 0; z-index: 28; align-items: center; justify-content: center;
+         background: rgba(3,14,26,.72); pointer-events: auto; }
+#helpPanel { width: 540px; max-width: 90vw; background: rgba(8,28,48,.97); color: #fff;
+         border: 2px solid rgba(116,192,252,.5); border-radius: 14px; padding: 18px 22px;
+         font-family: Consolas, monospace; line-height: 1.5; }
+#helpPanel h2 { margin: 0 0 10px; color: #74c0fc; font-size: 22px; }
+#helpPanel p { margin: 8px 0; font-size: 14px; }
+#helpPanel button { margin-top: 12px; font-family: inherit; font-size: 16px; padding: 8px 22px;
+         border-radius: 10px; border: 0; background: #1d4ed8; color: #fff; cursor: pointer; }
 .sideprompt { position: fixed; bottom: 12%; left: 50%; transform: translateX(-50%);
          font-family: Consolas, monospace; font-weight: bold; font-size: 16px; color: #fff;
          background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.6);
