@@ -155,9 +155,13 @@ export function drawHud(t: number) {
     scrubRingEl.style.background = `conic-gradient(#69db7c ${deg}deg, rgba(255,255,255,.15) ${deg}deg)`;
   } else scrubRingEl.style.display = 'none';
 
-  // ---- objective banner: route · distance · ETA · cargo (distDel computed above) ----
-  if (session.inMenu || cratesLeft() === 0) {
+  // ---- objective card: take a job, then route · distance · ETA · cargo ----
+  if (session.inMenu) {
     objectiveEl.style.display = 'none';
+  } else if (cratesLeft() === 0) {
+    objectiveEl.style.display = 'block';
+    objectiveEl.classList.remove('near');
+    objectiveEl.innerHTML = '<div class="route">📋 No job yet</div>read the job board on the home pier (E)';
   } else {
     objectiveEl.style.display = 'block';
     const near = distDel < 40;
@@ -174,7 +178,7 @@ export function drawHud(t: number) {
   }
 
   // ---- off-screen waypoint arrow pointing to the delivery flag ----
-  if (session.inMenu) { waypointEl.style.display = 'none'; }
+  if (session.inMenu || cratesLeft() === 0) { waypointEl.style.display = 'none'; }
   else {
     _projV.set(DELIVERY.x, 2, DELIVERY.z); _projV.project(cam1);
     let nx = _projV.x, ny = _projV.y;

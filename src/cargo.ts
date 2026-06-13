@@ -107,7 +107,8 @@ export function spawnBatch() {
 }
 export function resetCargo() {
   respawnT = -1;
-  spawnBatch();
+  // the pier starts EMPTY — crates only appear once you accept a job at the board
+  for (const c of crates) { c.s = 4; c.carrier = -1; c.lashed = false; c.vx = 0; c.vz = 0; }
 }
 
 /* --- pickup / putdown / toss (called from hands.pressE, host-side) --- */
@@ -280,8 +281,7 @@ function checkBatchDone() {
   if (crates.some(cr => cr.s !== 4) || respawnT > 0) return;
   const mins = (game.batchT / 60) | 0, secs = (game.batchT % 60) | 0;
   toast('Shipment done: ' + game.delivered + ' delivered · ' + game.lost + ' lost · '
-    + mins + ':' + String(secs).padStart(2, '0') + ' — new crates incoming!', '#ffd95e');
-  respawnT = 5;
+    + mins + ':' + String(secs).padStart(2, '0') + ' — take a new job at the board!', '#aef7a2');
 }
 
 /* --- visuals (host + guest; guest state comes from snapshots) --- */

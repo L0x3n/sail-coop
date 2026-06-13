@@ -1,5 +1,5 @@
 import { HOME_DOCK, ROUTES, routeIdx, setRoute } from './world';
-import { batchSize } from './cargo';
+import { batchSize, cratesLeft, spawnBatch } from './cargo';
 import { toast } from './hud';
 import * as audio from './audio';
 
@@ -28,8 +28,12 @@ export function pickRoute(i: number) {
   if (!r) return;
   if (r.locked?.()) { toast('🔒 ' + (r.lockHint ?? 'this route is locked'), '#ff8787'); return; }
   setRoute(i);
-  toast('New job: ' + r.name + ' — ' + r.pay + 'g per crate', '#ffd95e');
   audio.dockedChime();
+  if (cratesLeft() === 0) {
+    spawnBatch();   // fresh crates appear on the home pier (spawnBatch shows its own toast)
+  } else {
+    toast('Re-routed to ' + r.name + ' — carry your cargo to the new flag', '#ffd95e');
+  }
   refreshQuest();
 }
 
@@ -48,12 +52,13 @@ function tier(pay: number) {
 export function refreshQuest() {
   if (!questOpen) return;
   list.innerHTML = '';
+  const shipment = cratesLeft() > 0;          // a run is in progress (crates out there)
   ROUTES.forEach((r, i) => {
     const dx = r.del.x - HOME_DOCK.x, dz = r.del.z - HOME_DOCK.z;
     const dist = Math.hypot(dx, dz) | 0;
     const t = tier(r.pay);
     const locked = !!r.locked?.();
-    const active = i === routeIdx;
+    const active = shipment && i === routeIdx;   // only "active" while a shipment exists
     const row = document.createElement('div');
     row.className = 'questrow' + (active ? ' active' : '') + (locked ? ' locked' : '');
     row.innerHTML =
@@ -65,9 +70,9 @@ export function refreshQuest() {
       '</div>' +
       '<div class="qpay"><b>' + r.pay + 'g</b><small> /crate</small><div class="qload">≈ ' + (r.pay * batchSize()) + 'g a load</div></div>';
     const btn = document.createElement('button');
-    btn.textContent = locked ? '🔒 locked' : active ? 'ACTIVE' : 'Take job';
+    btn.textContent = locked ? '🔒 locked' : active ? 'ACTIVE' : shipment ? 'Switch' : 'Take job';
     btn.disabled = locked || active;
-    if (!locked && !active) btn.addEventListener('click', () => pickHandler(i));
+    if (!btn.disabled) btn.addEventListener('click', () => pickHandler(i));
     row.append(btn);
     list.append(row);
   });

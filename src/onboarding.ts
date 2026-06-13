@@ -1,5 +1,6 @@
 import { boat, game, myChar, session } from './state';
 import { DELIVERY } from './world';
+import { cratesAboard, cratesLeft } from './cargo';
 import { toast } from './hud';
 
 /* ===================================================================
@@ -29,9 +30,13 @@ export function updateOnboarding(dt: number) {
   const c = myChar();
   const speed = Math.hypot(boat.vel.x, boat.vel.z);
 
-  // 1. boarding — let the "shipment ready" toast land first, then nudge
-  if (playT > 3 && c.mode === 'shore' && c.carry < 0)
-    say('board', 'Step off the pier onto the deck to climb aboard.');
+  // 1. take a job — the pier is empty until you accept one at the board
+  if (playT > 3 && cratesLeft() === 0 && c.mode === 'shore')
+    say('job', 'Head to the job board on the pier (the green sign) and press E to take a job.');
+
+  // 2. load the crates it spawns onto the boat
+  if (cratesLeft() > 0 && cratesAboard() === 0 && c.mode === 'shore' && c.carry < 0)
+    say('load', 'Crates are on the pier — press E to lift one, then step aboard to load it.');
 
   // 2. the anchor is why she won't move
   if (c.mode === 'deck' && boat.anchored)
