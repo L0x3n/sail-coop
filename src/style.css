@@ -21,11 +21,14 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
 #msg button:hover { background: #37b24d; }
 #toast { left: 50%; top: 18%; transform: translateX(-50%); font-size: 26px; font-weight: bold;
          color: #ffe066; opacity: 0; transition: opacity .3s; }
-/* objective banner — top-center under the HUD bar */
-#objective { left: 50%; top: 92px; transform: translateX(-50%); display: none; white-space: nowrap;
-         font-size: 14px; font-weight: bold; color: #fff; background: rgba(0,20,40,.55);
-         border: 1px solid rgba(255,255,255,.18); padding: 5px 14px; border-radius: 20px; }
-#objective.near { color: #051; background: rgba(105,219,124,.92); border-color: rgba(255,255,255,.5); }
+/* objective tracker — top-left card (the corner is free now) */
+#objective { left: 12px; top: 12px; display: none; max-width: 220px; line-height: 1.4;
+         font-size: 13px; color: #e8eef2; background: rgba(0,20,40,.55);
+         border: 1px solid rgba(255,255,255,.16); border-left: 3px solid #69db7c;
+         padding: 8px 12px 9px; border-radius: 8px; }
+#objective .route { font-size: 15px; font-weight: bold; color: #ffd95e; margin-bottom: 1px; }
+#objective.near { border-left-color: #fff; background: rgba(105,219,124,.92); color: #053; }
+#objective.near .route { color: #053; }
 /* off-screen waypoint arrow to the delivery flag */
 #waypoint { display: none; transform: translate(-50%,-50%); text-align: center; color: #69db7c;
          text-shadow: 0 1px 4px rgba(0,0,0,.8); font-size: 12px; font-weight: bold; }

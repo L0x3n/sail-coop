@@ -22,8 +22,8 @@ export const joinCodeEl = el('joinCode') as HTMLInputElement;
 export const restartBtn = el('restartBtn') as HTMLButtonElement;
 const compassCtx = (el('compass') as HTMLCanvasElement).getContext('2d')!;
 const miniCtx = (el('miniboat') as HTMLCanvasElement).getContext('2d')!;
-const speedEl = el('speed'), timerEl = el('timer'), windTxtEl = el('windtxt'), pierTxtEl = el('piertxt');
-const goldEl = el('gold'), cargoTxtEl = el('cargoTxt');
+const speedEl = el('speed'), timerEl = el('timer'), windTxtEl = el('windtxt');
+const goldEl = el('gold');
 const toastEl = el('toast');
 const prompt1 = el('promptP1');
 const msgEl = el('msg'), msgTextEl = el('msgText');
@@ -149,11 +149,9 @@ function stationPromptText(c: Char): string {
 export function drawHud(t: number) {
   speedEl.textContent = len2(boat.vel).toFixed(1);
   timerEl.textContent = fmtTime(session.runTime);
-  windTxtEl.textContent = 'Wind ' + wind.strength.toFixed(0) + ' kn';
+  windTxtEl.textContent = wind.strength.toFixed(0) + ' kn';   // direction is on the dial
   const distDel = Math.hypot(DELIVERY.x - boat.pos.x, DELIVERY.z - boat.pos.z);
-  pierTxtEl.textContent = 'deliver ' + (distDel | 0) + 'm';
   goldEl.textContent = game.gold + 'g';
-  cargoTxtEl.textContent = 'aboard ' + cratesAboard() + ' · left ' + cratesLeft();
   drawCompass();
   drawMiniBoat(t);
   const txt = session.inMenu ? '' : stationPromptText(myChar());
@@ -197,13 +195,13 @@ export function drawHud(t: number) {
     const near = distDel < 40;
     objectiveEl.classList.toggle('near', near);
     if (near) {
-      objectiveEl.textContent = '⚑ ARRIVING — stop, drop anchor, carry crates onto the green flag';
+      objectiveEl.innerHTML = '<div class="route">⚑ ARRIVING</div>stop, drop anchor, carry crates onto the green flag';
     } else {
       const spd = len2(boat.vel);
       const eta = spd > 0.5 ? ' · ~' + Math.round(distDel / spd) + 's' : '';
       const dstr = distDel > 950 ? (distDel / 1000).toFixed(1) + 'km' : (distDel | 0) + 'm';
-      objectiveEl.textContent = '⚑ ' + ROUTES[routeIdx].name + ' · ' + dstr + eta
-        + ' · ' + cratesAboard() + ' aboard / ' + cratesLeft() + ' left';
+      objectiveEl.innerHTML = '<div class="route">⚑ ' + ROUTES[routeIdx].name + '</div>'
+        + dstr + eta + '<br>' + cratesAboard() + ' aboard · ' + cratesLeft() + ' left';
     }
   }
 
