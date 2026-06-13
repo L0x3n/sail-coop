@@ -7,14 +7,6 @@
 </head>
 <body>
 <div id="grade"></div>
-<div id="cheats" class="hud">
-  <b>WASD</b> move &nbsp;·&nbsp; <b>mouse</b> look (click or drag) &nbsp;·&nbsp; <b>SPACE</b> jump<br>
-  <b>E</b> interact: stations &amp; mop &nbsp;·&nbsp; <b>F</b> grab matey (hold, release = THROW) — mash <b>F</b> to escape<br>
-  Mop: <b>hold LMB</b> scrub &nbsp;·&nbsp; <b>tap LMB</b> bonk &nbsp;·&nbsp; <b>F</b> throw &nbsp;·&nbsp; <b>E</b> put down<br>
-  At <b>HELM</b>: A/D = rudder &nbsp;·&nbsp; At <b>SAIL</b>: A/D = boom<br>
-  <b>M</b> map &nbsp;·&nbsp; <b>Q</b> water (flat/fancy/AAA) &nbsp;·&nbsp; <b>N</b> sound<br>
-  Sail to the island pier &amp; stop alongside it. Watch out for slippery seagull poop!
-</div>
 <div id="topbar" class="hud">
   <div class="col"><canvas id="compass" width="90" height="90"></canvas><div id="windtxt">Wind</div></div>
   <div class="col"><div class="big" id="speed">0.0</div><div>speed</div><div class="big" id="timer">0:00</div></div>
@@ -32,8 +24,6 @@
 <div id="scrubRing" class="hud"><div id="scrubFill"></div></div>
 <div id="mopHint" class="hud"></div>
 <div id="netchip" class="hud"></div>
-<div id="lookHint" class="hud">click to capture the mouse — or hold &amp; drag to look &nbsp;·&nbsp; WASD move &nbsp;·&nbsp; SPACE jump</div>
-<div id="qnote" class="hud"><b>M</b>: map &nbsp;·&nbsp; <b>Q</b>: water &nbsp;·&nbsp; <b>N</b>: sound</div>
 <div id="mapWrap"><canvas id="bigmap" width="560" height="560"></canvas></div>
 <div id="shopWrap">
   <div id="shopPanel">
@@ -45,7 +35,7 @@
 <div id="modeSelect">
   <h1>SAIL TOGETHER!</h1>
   <div class="sub">First-person pirates on one stubborn boat — man the helm, trim the sail,
-    tack upwind, dock at the island pier.<br>
+    tack upwind, and run cargo to the green flag for gold.<br>
     Crew up online: the host gets a 4-letter code, the matey types it in. That's it.</div>
   <button id="btnSolo">Solo — singlehand her</button>
   <button id="btnHost">Host online co-op</button>

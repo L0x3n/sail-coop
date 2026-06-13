@@ -4,7 +4,6 @@ import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
 import { boat, chars, game, myChar, session, tuning, wind } from './state';
 import { getInteract } from './hands';
 import { cratesAboard, cratesLeft } from './cargo';
-import { dragLook } from './input';
 import { DELIVERY } from './world';
 import { dockedChime } from './audio';
 import { cam1 } from './scene';
@@ -27,7 +26,6 @@ const speedEl = el('speed'), timerEl = el('timer'), windTxtEl = el('windtxt'), p
 const goldEl = el('gold'), cargoTxtEl = el('cargoTxt');
 const toastEl = el('toast');
 const prompt1 = el('promptP1');
-const lookHintEl = el('lookHint');
 const msgEl = el('msg'), msgTextEl = el('msgText');
 const struggleEl = el('struggle');
 const scrubRingEl = el('scrubRing');
@@ -61,8 +59,18 @@ function drawCompass() {
   ctx.strokeStyle = 'rgba(255,255,255,.8)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(c, c, 38, 0, TAU); ctx.stroke();
+  const a = wrapPi(wind.angle - boat.yaw);            // wind direction, relative to the bow
+  // the NO-GO cone: point the bow into this red wedge and the sail won't drive (in irons).
+  // it sits around where the wind comes FROM (opposite the blows-toward arrow).
+  const wf = wrapPi(a + Math.PI);
+  const ng = CONFIG.noGoHalfAngle * Math.PI / 180;
+  ctx.save(); ctx.translate(c, c); ctx.rotate(-wf + Math.PI);
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.arc(0, 0, 38, -Math.PI / 2 - ng, -Math.PI / 2 + ng);
+  ctx.closePath();
+  ctx.fillStyle = boat.noGo ? 'rgba(255,70,70,.6)' : 'rgba(255,110,110,.2)';
+  ctx.fill(); ctx.restore();
   // wind arrow: where the wind BLOWS TOWARD, relative to the bow
-  const a = wrapPi(wind.angle - boat.yaw);
   ctx.save(); ctx.translate(c, c); ctx.rotate(-a + Math.PI);
   ctx.fillStyle = '#74c0fc';
   ctx.beginPath();
@@ -77,6 +85,9 @@ function drawCompass() {
   ctx.moveTo(0, -40); ctx.lineTo(6, -30); ctx.lineTo(-6, -30); ctx.closePath();
   ctx.fill();
   ctx.restore();
+  // your bow is always 'up' — turns red when you're in irons
+  ctx.fillStyle = boat.noGo ? '#ff6b6b' : '#fff';
+  ctx.beginPath(); ctx.moveTo(c, c - 41); ctx.lineTo(c - 4, c - 33); ctx.lineTo(c + 4, c - 33); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 11px Consolas';
   ctx.textAlign = 'center';
@@ -140,7 +151,6 @@ export function drawHud(t: number) {
   const txt = session.inMenu ? '' : stationPromptText(myChar());
   prompt1.style.display = txt ? 'block' : 'none';
   if (txt) prompt1.textContent = txt;
-  lookHintEl.style.display = (!session.inMenu && !document.pointerLockElement && !dragLook) ? 'block' : 'none';
 
   // struggle indicator above whoever is being carried
   const victim = chars.find(c => c.grabbedBy >= 0);

@@ -16,6 +16,7 @@ import { localToWorld2, resetState, tryToggleStation, updateChar } from './simCh
 import { updateCameras } from './camera';
 import { updateWeatherHost, updateWeatherVisuals } from './weather';
 import { daynight, updateDayNight } from './daynight';
+import { updateOnboarding } from './onboarding';
 import { N as FFT_N, PATCH as FFT_PATCH, heightField, oceanHeight, selfTest, updateOcean } from './fftOcean';
 import { director, updateDirector } from './director';
 import { bomberPos, clearSplats, nearestSplat, placeSplat, removeSplat, updateCritters } from './critters';
@@ -112,6 +113,7 @@ function visualStep(dt: number) {
   const t = session.simT;
   const speed = len2(boat.vel);
   updateDayNight(dt);                  // advance the day, repaint sky/water/sun before anything reads them
+  if (!session.inMenu) updateOnboarding(dt);   // first-voyage just-in-time hints
   // churned wake lane off the stern + a diverging Kelvin V, plus a bow moustache
   wakeTimer -= dt;
   if (speed > 1.2 && wakeTimer <= 0) {

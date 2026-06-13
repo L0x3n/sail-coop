@@ -8,9 +8,6 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
                      rgba(255,255,255,1) 52%, rgba(120,120,130,1) 86%, rgba(40,46,60,1) 100%); }
 .hud { position: fixed; color: #fff; font-family: "Consolas", "Courier New", monospace;
        text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; user-select: none; z-index: 10; }
-#cheats { left: 10px; top: 10px; font-size: 12px; line-height: 1.5;
-          background: rgba(0,20,40,.55); padding: 8px 12px; border-radius: 8px; }
-#cheats b { font-size: 13px; }
 #topbar { top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 14px;
           align-items: center; background: rgba(0,20,40,.55); padding: 6px 14px; border-radius: 10px; }
 #topbar .col { text-align: center; font-size: 12px; }
@@ -31,10 +28,6 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
          z-index: 11; white-space: nowrap; }
 #netchip { right: 10px; top: 10px; font-size: 14px; font-weight: bold;
            background: rgba(0,20,40,.6); padding: 6px 12px; border-radius: 8px; display: none; }
-#lookHint { left: 50%; top: 58%; transform: translateX(-50%); font-size: 15px;
-            background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 8px; display: none; }
-#qnote { right: 10px; bottom: 10px; font-size: 12px; opacity: .85;
-         background: rgba(0,20,40,.55); padding: 5px 10px; border-radius: 8px; }
 #modeSelect { position: fixed; inset: 0; background: rgba(4,18,34,.85); display: flex;
               flex-direction: column; align-items: center; justify-content: center; gap: 18px;
               z-index: 30; color: #fff; font-family: Consolas, monospace; text-align: center;
