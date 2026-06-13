@@ -78,13 +78,18 @@ export function goOverboard(c: Char) {
   c.mode = 'water';
   heelGroup.remove(c.mesh);
   scene.add(c.mesh);
-  // fall naturally into the sea — keep momentum, no daze, no announcement
-  c.vel = v2(boat.vel.x * 0.4, boat.vel.z * 0.4);
+  // KEEP your own outward momentum (boat-local -> world) so a jump off the rail
+  // carries you clear of the hull instead of dead-stopping; add a little boat drift
+  const f = headVec(boat.yaw), r = rightVec(boat.yaw);
+  const stepped = c.jumpY <= 0.0001;          // walked off through a gap vs jumped
+  c.vel = v2(boat.vel.x * 0.3 + r.x * c.vel.x + f.x * c.vel.z,
+             boat.vel.z * 0.3 + r.z * c.vel.x + f.z * c.vel.z);
   c.pos = v2(w.x, w.z);
   c.facing = wrapPi(boat.yaw + c.facing);   // boat-local facing -> world facing
-  // park the eye's height in jumpY; the water branch drains it under gravity,
-  // and splashes on impact. Keep c.vy so a jump arcs through.
+  // park the eye height in jumpY; the water branch drains it under gravity and
+  // splashes on impact. Carry c.vy so a hop arcs; a flat step-off tips straight in.
   c.jumpY = Math.max(0, DECK_Y + c.jumpY + CONFIG.eyeHeight - WATER_EYE);
+  if (stepped) c.vy = Math.min(c.vy, -2.5);
   c.overboardCount++;
 }
 export function climbAboard(c: Char) {
@@ -129,13 +134,12 @@ function exitWalkway(c: Char, grounded: boolean, leaveFeetY: number) {
     c.jumpY += 0.15;                           // pier deck sits a touch higher
     return true;
   }
-  if (grounded) {                              // step off into the water — fall in, don't snap
-    c.mode = 'water';
-    c.jumpY = Math.max(0, leaveFeetY + CONFIG.eyeHeight - WATER_EYE);   // eye fall, drained in the water branch
-    c.vy = 0;
-    return true;
-  }
-  return false;                                // still airborne — keep flying
+  // off the edge, out over the water — fall in immediately, keeping momentum.
+  // (No more hovering at pier height until you land, no dead-rest restart.)
+  c.mode = 'water';
+  c.jumpY = Math.max(0, leaveFeetY + CONFIG.eyeHeight - WATER_EYE);   // eye fall, drained in the water branch
+  if (grounded) c.vy = Math.min(c.vy, -2.5);   // a flat step-off tips straight in; a hop keeps its arc
+  return true;
 }
 const inGap = (z: number) => layout.gaps.some(g => z > g.z0 && z < g.z1);
 
@@ -356,8 +360,11 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
       }
     }
     c.animMoving = swimming;
-    c.vel.x -= c.vel.x * Math.min(1, 3.0 * dt);
-    c.vel.z -= c.vel.z * Math.min(1, 3.0 * dt);
+    // keep your momentum while still dropping in (a real arc); the water only
+    // drags you to a stop once you've actually splashed down
+    const drag = airborne ? 0.4 : 3.0;
+    c.vel.x -= c.vel.x * Math.min(1, drag * dt);
+    c.vel.z -= c.vel.z * Math.min(1, drag * dt);
     c.pos.x += c.vel.x * dt;
     c.pos.z += c.vel.z * dt;
     // swim into a pier or beach and clamber up (checked BEFORE the island
