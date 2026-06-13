@@ -57,6 +57,7 @@ let JIB_TACK = new THREE.Vector3();
 let JIB_HEAD = new THREE.Vector3();
 const SAIL_W = 8, SAIL_H = 8;
 const JIB_U = 7, JIB_V = 5;
+const _jClew = new THREE.Vector3(), _jL = new THREE.Vector3(), _jE = new THREE.Vector3(), _jP = new THREE.Vector3();
 
 // hull cross sections at scale 1: z, half beam, keel depth, deck-edge height
 const SECS = [
@@ -508,9 +509,9 @@ export function updateBoatVisuals(dt: number, t: number) {
 
   // jib
   const S = layout.scale;
-  const clew = new THREE.Vector3(Math.sin(boat.boomAngle) * 2.0 * S, DECK_Y + 1.55, 3.3 * S);
+  const clew = _jClew.set(Math.sin(boat.boomAngle) * 2.0 * S, DECK_Y + 1.55, 3.3 * S);
   const jp = jibGeo.attributes.position.array as Float32Array;
-  const L = new THREE.Vector3(), E = new THREE.Vector3(), P = new THREE.Vector3();
+  const L = _jL, E = _jE, P = _jP;
   for (let u = 0; u <= JIB_U; u++) {
     const fu = u / JIB_U;
     L.lerpVectors(JIB_TACK, JIB_HEAD, fu);

@@ -1,5 +1,5 @@
 import { HOME_DOCK, ROUTES, setRoute } from './world';
-import { batchSize, cratesLeft, resetCargo, spawnBatch } from './cargo';
+import { batchSize, resetCargo, spawnBatch } from './cargo';
 import { accepted, MAX_JOBS } from './state';
 import { toast } from './hud';
 import * as audio from './audio';
@@ -41,8 +41,12 @@ export function runNow(route: number) {
   accepted.splice(at, 1);
   accepted.unshift(route);                                         // move to the front = live
   setRoute(route);
-  if (cratesLeft() === 0) spawnBatch();
-  else toast('Now running ' + ROUTES[route].name + ' — carry your cargo to the new flag.', '#ffd95e');
+  // a fresh shipment for the new job (you switch at the home pier, so the crates
+  // appear right there). This keeps cargo bound to its job — no repricing of
+  // in-flight crates at the new rate, and the old job stays in the log to resume.
+  resetCargo();
+  spawnBatch();
+  toast('Now running ' + ROUTES[route].name + ' — its crates are on the home pier.', '#ffd95e');
   refreshQuest();
 }
 

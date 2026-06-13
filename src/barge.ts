@@ -12,6 +12,8 @@ import { toast } from './hud';
 import * as audio from './audio';
 import type { Char } from './types';
 
+const _ropeUp = new THREE.Vector3(0, 1, 0), _ropeDir = new THREE.Vector3();   // reused each frame
+
 /* ===================================================================
    The barge: +6 crates on a greedy trailer. It steers ITSELF (pendulum
    fishtail on the tow rope), tugs the stern around, and capsizes if you
@@ -201,5 +203,5 @@ export function updateBargeVisual(t: number) {
   const d = Math.hypot(ddx, ddz) || 1;
   ropeMesh.position.set(mx, 0.45, mz);
   ropeMesh.scale.y = d;
-  ropeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(ddx / d, 0, ddz / d));
+  ropeMesh.quaternion.setFromUnitVectors(_ropeUp, _ropeDir.set(ddx / d, 0, ddz / d));
 }

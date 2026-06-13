@@ -353,6 +353,9 @@ const holds = new Map<Char, Hold>();
 
 /* --- LMB tap: WHACK the matey with the mop (if not scrubbing) --- */
 const whackCd = new Map<Char, number>();
+
+/* drop every active grab/cooldown — used on reset and on a mid-grab disconnect */
+export function clearHolds() { holds.clear(); whackCd.clear(); }
 export function mopTap(c: Char) {
   if (c.mode !== 'deck' || !mopOf(c)) return;
   if (nearestSplat(c.pos.x, c.pos.z, scrubReach())) return;   // that press means "scrub"
@@ -555,5 +558,6 @@ export function resetHands(coop: boolean) {
   for (const c of chars) {
     c.hasMop = false; c.grabbedBy = -1; c.holding = false; c.mash = 0; c.scrubT = 0;
   }
+  clearHolds();
   resetMops(coop);
 }

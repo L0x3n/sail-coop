@@ -115,7 +115,7 @@ function physicsStep(dt: number) {
 }
 
 /* =========================== cosmetic step =========================== */
-let wakeTimer = 0, sprayTimer = 0, bargeWakeTimer = 0;
+let wakeTimer = 0, sprayTimer = 0, bargeWakeTimer = 0, uiTick = 0;
 function visualStep(dt: number) {
   const t = session.simT;
   const speed = len2(boat.vel);
@@ -190,8 +190,13 @@ function visualStep(dt: number) {
   updateCannonVisuals(dt);
   updateBargeVisual(t);
   updateHats(dt, t);
-  if (shopOpen) refreshShop();
-  if (questOpen) refreshQuest();
+  // panels change on click (their handlers refresh) — a full DOM rebuild every
+  // frame was a needless reflow; re-sync only a few times a second (covers the
+  // guest's live gold/jobs without churning layout at 60fps)
+  if ((shopOpen || questOpen) && (++uiTick & 7) === 0) {
+    if (shopOpen) refreshShop();
+    if (questOpen) refreshQuest();
+  }
   updateBoatVisuals(dt, t);
   updateCameras(dt, t);
   audio.updateAudio(dt, wind.strength, speed, session.inMenu ? 0 : (boat.luffing ? 1 : 0));

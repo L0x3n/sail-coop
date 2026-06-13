@@ -109,6 +109,7 @@ export function resetCargo() {
   respawnT = -1;
   // the pier starts EMPTY — crates only appear once you accept a job at the board
   for (const c of crates) { c.s = 4; c.carrier = -1; c.lashed = false; c.vx = 0; c.vz = 0; }
+  for (const ch of chars) ch.carry = -1;   // drop any carried crate (no ghost on the next pickup)
 }
 
 /* --- pickup / putdown / toss (called from hands.pressE, host-side) --- */

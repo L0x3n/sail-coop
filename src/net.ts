@@ -11,7 +11,7 @@ import { buildShip, setBoatPreset } from './shipMesh';
 import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
 import { barge, resetBarge } from './barge';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
-import { gildMops, handsEdge, mopTap, mops, pressE, resetHands } from './hands';
+import { clearHolds, gildMops, handsEdge, mopTap, mops, pressE, resetHands } from './hands';
 import type { BoatPreset } from './types';
 import { inputAxes, localDrag } from './input';
 import { applyAspect, scene } from './scene';
@@ -111,7 +111,10 @@ export function startHost(p?: BoatPreset) {
       setGuestHere(false);
       releaseStation(p2);
       p2.mesh.visible = false;
-      p2.grabbedBy = -1; p1.holding = false; p2.holding = false;
+      // drop any grab in BOTH directions (esp. guest-grabbing-host, which would
+      // otherwise leave p1.grabbedBy set forever → host frozen) + clear hold state
+      p1.grabbedBy = -1; p2.grabbedBy = -1; p1.holding = false; p2.holding = false;
+      clearHolds();
       if (mops[1].held >= 0) chars[mops[1].held].hasMop = false;
       mops[1].on = false;                      // their mop leaves with them
       netChipEl.textContent = 'Code: ' + code + ' — matey left, waiting…';

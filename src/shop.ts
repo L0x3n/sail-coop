@@ -3,6 +3,7 @@ import { boat, chars, game, layout, netRole, owned, prefs, saveProgress } from '
 import { HOME_DOCK } from './world';
 import { buildShip, setBoatPreset } from './shipMesh';
 import { resetBarge } from './barge';
+import { cratesLeft, resetCargo, spawnBatch } from './cargo';
 import { setHat } from './pirates';
 import { gildMops } from './hands';
 import { toast } from './hud';
@@ -76,6 +77,7 @@ export function equipShip(id: string) {
   saveProgress();
   setBoatPreset(preset);
   if (shipRelay) shipRelay(id);
+  if (cratesLeft() > 0) { resetCargo(); spawnBatch(); }   // re-load the live job at the new hull's capacity
   toast('Hull swapped: ' + preset.name + '!', '#aef7a2');
   refreshShop();
 }
@@ -95,6 +97,7 @@ export function equipBarge() {
   } else {
     toast('Barge unhitched.', '#dee2e6');
   }
+  if (cratesLeft() > 0) { resetCargo(); spawnBatch(); }   // re-load the live job with/without the barge's +6
   refreshShop();
 }
 

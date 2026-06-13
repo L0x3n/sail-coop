@@ -32,6 +32,13 @@ const mopHintEl = el('mopHint');
 const objectiveEl = el('objective'), waypointEl = el('waypoint'), trimCoachEl = el('trimCoach');
 const helpEl = el('help');
 const _projV = new THREE.Vector3();
+/* HUD text changes a few times a second, not 60×; only touch innerHTML (a reparse
+   + reflow) when the string actually changes */
+let _objHtml = '', _coachHtml = '', _mopHtml = '';
+function setHTML(elm: HTMLElement, html: string, prev: string): string {
+  if (html !== prev) elm.innerHTML = html;
+  return html;
+}
 
 /* the Help (?) overlay */
 export function toggleHelp() { helpEl.style.display = helpEl.style.display === 'flex' ? 'none' : 'flex'; }
@@ -144,7 +151,7 @@ export function drawHud(t: number) {
   const meH = myChar();
   if (!session.inMenu && meH.hasMop && meH.mode === 'deck') {
     mopHintEl.style.display = 'block';
-    mopHintEl.innerHTML = '🧹 <b>hold LMB</b> scrub · <b>tap LMB</b> bonk matey · <b>F</b> throw · <b>E</b> put down';
+    _mopHtml = setHTML(mopHintEl, '🧹 <b>hold LMB</b> scrub · <b>tap LMB</b> bonk matey · <b>F</b> throw · <b>E</b> put down', _mopHtml);
   } else mopHintEl.style.display = 'none';
 
   // scrub progress ring
@@ -161,7 +168,7 @@ export function drawHud(t: number) {
   } else if (accepted.length === 0) {
     objectiveEl.style.display = 'block';
     objectiveEl.classList.remove('near');
-    objectiveEl.innerHTML = '<div class="qcard empty"><div class="route">📋 No job yet</div>read the job board on the home pier (E) — take up to 3</div>';
+    _objHtml = setHTML(objectiveEl, '<div class="qcard empty"><div class="route">📋 No job yet</div>read the job board on the home pier (E) — take up to 3</div>', _objHtml);
   } else {
     objectiveEl.style.display = 'block';
     const near = distDel < 40;
@@ -185,7 +192,7 @@ export function drawHud(t: number) {
           + r.pay + 'g/crate · queued (switch at the board)</div>';
       }
     });
-    objectiveEl.innerHTML = html;
+    _objHtml = setHTML(objectiveEl, html, _objHtml);
   }
 
   // ---- off-screen waypoint arrow pointing to the delivery flag ----
@@ -222,8 +229,8 @@ export function drawHud(t: number) {
       col = power > 0.4 ? '#ffd43b' : '#ff8787';
     } else { word = 'TRIMMED ✓'; hint = ''; col = '#51cf66'; }
     trimCoachEl.style.display = 'block';
-    trimCoachEl.innerHTML = '<span style="color:' + col + '">SAIL ' + word + '</span>'
+    _coachHtml = setHTML(trimCoachEl, '<span style="color:' + col + '">SAIL ' + word + '</span>'
       + '<span class="bar"><i style="width:' + (power * 100).toFixed(0) + '%;background:' + col + '"></i></span>'
-      + '<span style="color:' + col + '">' + hint + '</span>';
+      + '<span style="color:' + col + '">' + hint + '</span>', _coachHtml);
   } else trimCoachEl.style.display = 'none';
 }
