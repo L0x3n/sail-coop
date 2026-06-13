@@ -21,7 +21,6 @@ export const btnJoin = el('btnJoin') as HTMLButtonElement;
 export const joinCodeEl = el('joinCode') as HTMLInputElement;
 export const restartBtn = el('restartBtn') as HTMLButtonElement;
 const compassCtx = (el('compass') as HTMLCanvasElement).getContext('2d')!;
-const miniCtx = (el('miniboat') as HTMLCanvasElement).getContext('2d')!;
 const speedEl = el('speed'), timerEl = el('timer'), windTxtEl = el('windtxt');
 const goldEl = el('gold');
 const toastEl = el('toast');
@@ -102,36 +101,6 @@ function drawCompass() {
   ctx.fillText('WIND', c, c + 30);
 }
 
-function drawMiniBoat(t: number) {
-  const ctx = miniCtx, S = 110, c = S / 2;
-  ctx.clearRect(0, 0, S, S);
-  ctx.save(); ctx.translate(c, c);
-  // hull outline, bow up
-  ctx.strokeStyle = '#e9c9a8'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(170,120,70,.55)';
-  ctx.beginPath();
-  ctx.moveTo(0, -34); ctx.quadraticCurveTo(15, -16, 13, 22); ctx.lineTo(-13, 22);
-  ctx.quadraticCurveTo(-15, -16, 0, -34); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // boom, colored by trim quality (green = drawing well, red/flash = luffing)
-  const power = clamp(boat.sailForce / Math.max(0.01, tuning.sailPower * wind.strength), 0, 1);
-  let boomCol = power > 0.7 ? '#51cf66' : power > 0.35 ? '#ffd43b' : '#ff6b6b';
-  if (boat.luffing && Math.sin(t * 10) > 0) boomCol = '#ff8787';
-  ctx.strokeStyle = boomCol; ctx.lineWidth = 3;
-  ctx.save(); ctx.translate(0, -6); ctx.rotate(-boat.boomAngle);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 26); ctx.stroke(); ctx.restore();
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -6, 3, 0, TAU); ctx.fill();
-  // rudder at stern
-  ctx.strokeStyle = '#74c0fc';
-  ctx.save(); ctx.translate(0, 22); ctx.rotate(-boat.rudder * 1.5);
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 12); ctx.stroke(); ctx.restore();
-  // wind arrow relative to boat heading
-  const rel = wrapPi(wind.angle - boat.yaw);
-  ctx.save(); ctx.rotate(-rel + Math.PI); ctx.strokeStyle = '#74c0fc'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, -50); ctx.lineTo(0, -40); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(0, -38); ctx.lineTo(4, -44); ctx.lineTo(-4, -44); ctx.closePath();
-  ctx.fillStyle = '#74c0fc'; ctx.fill(); ctx.restore();
-  ctx.restore();
-}
-
 /* =========================== prompts =========================== */
 function stationPromptText(c: Char): string {
   if (c.mode === 'water') {
@@ -153,7 +122,6 @@ export function drawHud(t: number) {
   const distDel = Math.hypot(DELIVERY.x - boat.pos.x, DELIVERY.z - boat.pos.z);
   goldEl.textContent = game.gold + 'g';
   drawCompass();
-  drawMiniBoat(t);
   const txt = session.inMenu ? '' : stationPromptText(myChar());
   prompt1.style.display = txt ? 'block' : 'none';
   if (txt) prompt1.textContent = txt;
