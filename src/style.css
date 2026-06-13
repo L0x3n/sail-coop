@@ -21,14 +21,17 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
 #msg button:hover { background: #37b24d; }
 #toast { left: 50%; top: 18%; transform: translateX(-50%); font-size: 26px; font-weight: bold;
          color: #ffe066; opacity: 0; transition: opacity .3s; }
-/* objective tracker — top-left card (the corner is free now) */
-#objective { left: 12px; top: 12px; display: none; max-width: 220px; line-height: 1.4;
-         font-size: 13px; color: #e8eef2; background: rgba(0,20,40,.55);
-         border: 1px solid rgba(255,255,255,.16); border-left: 3px solid #69db7c;
-         padding: 8px 12px 9px; border-radius: 8px; }
-#objective .route { font-size: 15px; font-weight: bold; color: #ffd95e; margin-bottom: 1px; }
-#objective.near { border-left-color: #fff; background: rgba(105,219,124,.92); color: #053; }
-#objective.near .route { color: #053; }
+/* job tracker — top-left stack of accepted jobs, each its own card */
+#objective { left: 12px; top: 12px; display: none; max-width: 240px; line-height: 1.4; }
+.qcard { font-size: 13px; color: #e8eef2; background: rgba(0,20,40,.58);
+         border: 1px solid rgba(255,255,255,.16); border-left: 3px solid rgba(255,255,255,.28);
+         padding: 8px 12px 9px; border-radius: 8px; margin-bottom: 6px; }
+.qcard.live { border-left-color: #69db7c; }
+.qcard.empty { border-left-color: #ffd95e; }
+.qcard .route { font-size: 15px; font-weight: bold; color: #ffd95e; margin-bottom: 1px; }
+.qcard:not(.live) .route { color: #cdd6df; font-size: 13px; }
+#objective.near .qcard.live { border-left-color: #fff; background: rgba(105,219,124,.92); color: #053; }
+#objective.near .qcard.live .route { color: #053; }
 /* off-screen waypoint arrow to the delivery flag */
 #waypoint { display: none; transform: translate(-50%,-50%); text-align: center; color: #69db7c;
          text-shadow: 0 1px 4px rgba(0,0,0,.8); font-size: 12px; font-weight: bold; }
@@ -151,7 +154,10 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
 .questrow { display: flex; align-items: center; gap: 12px; padding: 11px 8px;
              border-bottom: 1px solid rgba(255,255,255,.12); }
 .questrow.active { background: rgba(105,219,124,.12); border-radius: 8px; }
+.questrow.queued { background: rgba(255,217,94,.09); border-radius: 8px; }
 .questrow.locked { opacity: .55; }
+.qslot { font-size: 11px; font-weight: bold; color: #69db7c; margin-left: 6px; }
+.qslot.q { color: #ffd43b; }
 .qdir { font-size: 26px; color: #74c0fc; width: 26px; text-align: center; flex: none; }
 .qinfo { flex: 1; min-width: 0; }
 .qname { font-size: 17px; font-weight: bold; }
@@ -163,9 +169,12 @@ canvas.webgl { display: block; filter: saturate(1.08) contrast(1.03); }
 .qpay b { font-size: 20px; color: #ffd43b; }
 .qpay small { opacity: .7; }
 .qload { font-size: 11px; opacity: .65; }
-.questrow > button { flex: none; min-width: 92px; font-family: inherit; font-size: 14px; padding: 8px 10px;
+.qbtns { display: flex; flex-direction: column; gap: 5px; flex: none; }
+.qbtns button { min-width: 96px; font-family: inherit; font-size: 14px; padding: 8px 10px;
              border-radius: 8px; border: 1px solid rgba(255,255,255,.35); background: #1d4ed8; color: #fff; cursor: pointer; }
-.questrow > button:disabled { background: rgba(255,255,255,.12); cursor: default; }
+.qbtns button:disabled { background: rgba(255,255,255,.12); cursor: default; }
+.qbtns .qdrop { font-size: 12px; padding: 5px 10px; min-width: 0;
+             background: rgba(255,135,135,.16); border-color: rgba(255,135,135,.4); color: #ffc2c2; }
 #questFoot { font-size: 11px; opacity: .6; margin-top: 12px; text-align: center; }
 #bigmap { border: 3px solid rgba(255,255,255,.35); border-radius: 14px;
           box-shadow: 0 12px 60px rgba(0,0,0,.55); }

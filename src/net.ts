@@ -2,10 +2,10 @@ import Peer, { DataConnection } from 'peerjs';
 import { BOATS, CONFIG, DECK_Y } from './config';
 import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { accepted, boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { equipHat, setShipRelay, tryBuy } from './shop';
-import { pickRoute } from './quest';
+import { acceptQuest, abandonQuest } from './quest';
 import { setHat } from './pirates';
 import { buildShip, setBoatPreset } from './shipMesh';
 import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
@@ -56,6 +56,7 @@ export function beginPlay() {
   resetState();
   resetHands(netRole === 'guest' || guestHere);
   clearSplats();
+  accepted.length = 0;       // a fresh game starts with an empty job log
   resetCargo();
   resetCannon();
   resetBarge();
@@ -145,7 +146,7 @@ export function hostOnData(m: NetMsg) {
   } else if (m.k === 'hat') {
     equipHat(1, m.id);
   } else if (m.k === 'route') {
-    pickRoute(m.i);
+    if (m.a === 'abandon') abandonQuest(m.i); else acceptQuest(m.i);
   } else if (m.k === 'restart?') {
     resetState();
     resetHands(guestHere);
@@ -210,6 +211,7 @@ export function applySnapshot(m: Snapshot) {
   wind.angle = m.w.a; wind.strength = m.w.s;
   if (m.w.wid !== env.weatherId) { env.weatherId = (m.w.wid as 0 | 1 | 2) ?? 0; env.weatherLerp = 0; }
   env.bigWave = m.w.bw ?? 0;
+  if (m.aq) accepted.splice(0, accepted.length, ...m.aq);   // mirror the host's job log
   if (m.rt !== routeIdx) setRoute(m.rt);
   if (m.up) {
     owned.bigDeck = m.up.bd;
@@ -352,6 +354,7 @@ export function hostNetStep(dt: number) {
     cg: cargoSnap(),
     g: { gold: game.gold, del: game.delivered, lost: game.lost },
     rt: routeIdx,
+    aq: accepted.slice(),
     up: { bd: owned.bigDeck, ch: owned.chartNorth, sk: owned.skiff, gl: owned.galleon, hs: owned.hatStraw, hf: owned.hatFancy,
           ca: owned.cannon, bg: owned.barge, mq: owned.mopQuick, ml: owned.mopLong, mg: owned.mopGold },
     cn: { y: cannon.yaw, p: cannon.pitch, r: cannon.reload },
@@ -368,7 +371,7 @@ export function sendGrab() { netSend({ k: 'g' }); }
 export function sendHandsEdge() { netSend({ k: 'f' }); }
 export function sendMopTap() { netSend({ k: 'm0' }); }
 export function sendBuy(id: string) { netSend({ k: 'buy', id }); }
-export function sendRoute(i: number) { netSend({ k: 'route', i }); }
+export function sendRoute(i: number, abandon = false) { netSend(abandon ? { k: 'route', i, a: 'abandon' } : { k: 'route', i }); }
 export function sendHat(id: string) { netSend({ k: 'hat', id }); }
 
 export function requestRestart() {

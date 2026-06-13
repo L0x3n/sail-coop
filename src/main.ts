@@ -10,7 +10,7 @@ import { buildWorld, islandPos, updateNPCs, updateShores } from './world';
 import { heelGroup, updateBoatVisuals } from './shipMesh';
 import { makePirate, animateChar, updateHats } from './pirates';
 import { equipBarge, equipHat, refreshShop, setShopHandlers, shopOpen, toggleShop, tryBuy } from './shop';
-import { pickRoute, questOpen, refreshQuest, setQuestHandlers, toggleQuest } from './quest';
+import { acceptQuest, abandonQuest, questShipmentDone, questOpen, refreshQuest, setQuestHandlers, toggleQuest } from './quest';
 import { spawnDroplets, spawnWake, updateBowWave, updateSplash, updateStreaks, updateWake } from './effects';
 import { updateBoat, updateWind } from './simBoat';
 import { localToWorld2, resetState, tryToggleStation, updateChar } from './simChars';
@@ -24,7 +24,7 @@ import { bomberPos, clearSplats, nearestSplat, placeSplat, removeSplat, updateCr
 import { handsEdge, mopTap, mops, pressE, resetHands, updateHands, updateMopVisual } from './hands';
 import { balls, cannon, fireCannon, updateCannon, updateCannonVisuals } from './cannon';
 import { barge, updateBarge, updateBargeVisual } from './barge';
-import { crates, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
+import { crates, setShipmentDoneHook, spawnBatch, updateCargo, updateCargoVisual } from './cargo';
 import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, helpOpen, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
 import {
@@ -253,7 +253,12 @@ setShopHandlers(
   id => { if (netRole === 'guest') sendBuy(id); else tryBuy(id); },
   style => { if (netRole === 'guest') sendHat(style); else equipHat(0, style); },
 );
-setQuestHandlers(i => { if (netRole === 'guest') sendRoute(i); else pickRoute(i); });
+setQuestHandlers((route, action) => {
+  if (netRole === 'guest') sendRoute(route, action === 'abandon');
+  else if (action === 'abandon') abandonQuest(route);
+  else acceptQuest(route);
+});
+setShipmentDoneHook(questShipmentDone);   // finishing the live run advances the job queue
 // while any panel is open, the mouse clicks its buttons instead of capturing
 setModalGetter(() => shopOpen || questOpen || helpOpen() || mapOpen);
 btnSolo.addEventListener('click', () => { audio.ensureAudio(); startSolo(startBoat()); });

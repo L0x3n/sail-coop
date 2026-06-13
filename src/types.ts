@@ -87,7 +87,8 @@ export interface Snapshot {
   m: MopSnap[];   // the mops (boat-local)
   cg: CrateSnap[];
   g: { gold: number; del: number; lost: number };
-  rt: number;     // active route index
+  rt: number;     // active route index (= accepted[0])
+  aq: number[];   // accepted jobs (route indices), accepted[0] is live
   up: { bd: boolean; ch: boolean; sk: boolean; gl: boolean; hs: boolean; hf: boolean; ca: boolean; bg: boolean;
         mq: boolean; ml: boolean; mg: boolean };
   cn: { y: number; p: number; r: number };                                       // cannon aim + reload
@@ -106,7 +107,7 @@ export type NetMsg =
   | { k: 'buy'; id: string }                    // matey asks the host to buy/equip
   | { k: 'hat'; id: string }                    // matey picked a hat for themselves
   | { k: 'boat'; id: string }                   // host switched the hull
-  | { k: 'route'; i: number }                   // matey picked a job at the board
+  | { k: 'route'; i: number; a?: 'abandon' }    // matey took / switched-to / abandoned a job
   | { k: 'boom'; x: number; y: number; z: number; vx: number; vy: number; vz: number } // cannon fired
   | { k: 'reset' }
   | { k: 'restart?' };

@@ -124,6 +124,11 @@ export const game = {
   batchT: 0,        // seconds spent on the current shipment
 };
 
+/* jobs you've taken on (route indices), max 3. accepted[0] is the LIVE run —
+   its flag and crates are out; the rest are queued. Host-authoritative, synced. */
+export const accepted: number[] = [];
+export const MAX_JOBS = 3;
+
 /* --- the chaos shop: purchases persist (host's browser owns the save) --- */
 export const owned = {
   skiff: false,

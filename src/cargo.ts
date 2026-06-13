@@ -277,11 +277,15 @@ export function updateCargo(dt: number) {
     }
   }
 }
+/* the quest log advances the accepted-jobs queue when a shipment clears */
+let shipmentDoneHook: () => void = () => {};
+export function setShipmentDoneHook(fn: () => void) { shipmentDoneHook = fn; }
 function checkBatchDone() {
   if (crates.some(cr => cr.s !== 4) || respawnT > 0) return;
   const mins = (game.batchT / 60) | 0, secs = (game.batchT % 60) | 0;
-  toast('Shipment done: ' + game.delivered + ' delivered · ' + game.lost + ' lost · '
-    + mins + ':' + String(secs).padStart(2, '0') + ' — take a new job at the board!', '#aef7a2');
+  toast('Job complete: ' + game.delivered + ' delivered · ' + game.lost + ' lost · '
+    + mins + ':' + String(secs).padStart(2, '0'), '#aef7a2');
+  shipmentDoneHook();   // → next accepted job goes live (or the board falls quiet)
 }
 
 /* --- visuals (host + guest; guest state comes from snapshots) --- */

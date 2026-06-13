@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { TAU, clamp, fmtTime, len2, wrapPi } from './mathUtil';
-import { boat, chars, game, myChar, pointOfSail, session, tuning, wind } from './state';
+import { accepted, boat, chars, game, myChar, pointOfSail, session, tuning, wind } from './state';
 import { getInteract } from './hands';
 import { cratesAboard, cratesLeft } from './cargo';
 import { DELIVERY, ROUTES, routeIdx } from './world';
@@ -155,26 +155,37 @@ export function drawHud(t: number) {
     scrubRingEl.style.background = `conic-gradient(#69db7c ${deg}deg, rgba(255,255,255,.15) ${deg}deg)`;
   } else scrubRingEl.style.display = 'none';
 
-  // ---- objective card: take a job, then route · distance · ETA · cargo ----
+  // ---- job tracker: up to 3 accepted jobs, the live one on top ----
   if (session.inMenu) {
     objectiveEl.style.display = 'none';
-  } else if (cratesLeft() === 0) {
+  } else if (accepted.length === 0) {
     objectiveEl.style.display = 'block';
     objectiveEl.classList.remove('near');
-    objectiveEl.innerHTML = '<div class="route">📋 No job yet</div>read the job board on the home pier (E)';
+    objectiveEl.innerHTML = '<div class="qcard empty"><div class="route">📋 No job yet</div>read the job board on the home pier (E) — take up to 3</div>';
   } else {
     objectiveEl.style.display = 'block';
     const near = distDel < 40;
     objectiveEl.classList.toggle('near', near);
-    if (near) {
-      objectiveEl.innerHTML = '<div class="route">⚑ ARRIVING</div>stop, drop anchor, carry crates onto the green flag';
-    } else {
-      const spd = len2(boat.vel);
-      const eta = spd > 0.5 ? ' · ~' + Math.round(distDel / spd) + 's' : '';
-      const dstr = distDel > 950 ? (distDel / 1000).toFixed(1) + 'km' : (distDel | 0) + 'm';
-      objectiveEl.innerHTML = '<div class="route">⚑ ' + ROUTES[routeIdx].name + '</div>'
-        + dstr + eta + '<br>' + cratesAboard() + ' aboard · ' + cratesLeft() + ' left';
-    }
+    let html = '';
+    accepted.forEach((route, idx) => {
+      const r = ROUTES[route];
+      if (idx === 0) {
+        // the live run: distance / ETA / cargo to the active flag
+        if (near) {
+          html += '<div class="qcard live"><div class="route">⚑ ' + r.name + ' — ARRIVING</div>stop, drop anchor, carry crates onto the green flag</div>';
+        } else {
+          const spd = len2(boat.vel);
+          const eta = spd > 0.5 ? ' · ~' + Math.round(distDel / spd) + 's' : '';
+          const dstr = distDel > 950 ? (distDel / 1000).toFixed(1) + 'km' : (distDel | 0) + 'm';
+          html += '<div class="qcard live"><div class="route">⚑ ' + r.name + '</div>'
+            + dstr + eta + ' · ' + r.pay + 'g/crate<br>' + cratesAboard() + ' aboard · ' + cratesLeft() + ' left</div>';
+        }
+      } else {
+        html += '<div class="qcard"><div class="route">' + (idx + 1) + '. ' + r.name + '</div>'
+          + r.pay + 'g/crate · queued (switch at the board)</div>';
+      }
+    });
+    objectiveEl.innerHTML = html;
   }
 
   // ---- off-screen waypoint arrow pointing to the delivery flag ----
