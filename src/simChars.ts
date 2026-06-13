@@ -103,10 +103,11 @@ export function climbAboard(c: Char) {
   const w = localToWorld2(c.pos);
   spawnSplash(w.x, w.z, false);
 }
-/* leaving the deck past a rail/gap: land on a pier if one is there, else the sea */
+/* leaving the deck past a rail/gap: land on a pier if one is there, KEEP FLYING
+   while still airborne (so a jump can carry to the pier/island), else the sea */
 function exitDeck(c: Char) {
   const w = localToWorld2(c.pos);
-  if (onWalkway(w.x, w.z, 0.7)) {
+  if (onWalkway(w.x, w.z, 0.7) || c.jumpY > 0.0001) {
     releaseStation(c);
     heelGroup.remove(c.mesh);
     scene.add(c.mesh);
@@ -134,11 +135,15 @@ function exitWalkway(c: Char, grounded: boolean, leaveFeetY: number) {
     c.jumpY += 0.15;                           // pier deck sits a touch higher
     return true;
   }
-  // off the edge, out over the water — fall in immediately, keeping momentum.
-  // (No more hovering at pier height until you land, no dead-rest restart.)
+  // still airborne over the gap? keep flying so a JUMP can finish onto the deck
+  // or pier (the over-deck check above catches the landing). Only commit to the
+  // water once you actually come down over open water.
+  if (!grounded) return false;
+  // landed/stepped off over open water — fall in, tipping straight down (no
+  // hover at pier height, no dead-rest restart)
   c.mode = 'water';
   c.jumpY = Math.max(0, leaveFeetY + CONFIG.eyeHeight - WATER_EYE);   // eye fall, drained in the water branch
-  if (grounded) c.vy = Math.min(c.vy, -2.5);   // a flat step-off tips straight in; a hop keeps its arc
+  c.vy = Math.min(c.vy, -2.5);
   return true;
 }
 const inGap = (z: number) => layout.gaps.some(g => z > g.z0 && z < g.z1);
