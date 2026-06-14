@@ -37,7 +37,7 @@ function inkOutline(mesh: THREE.Mesh, s = 1.07) {
   mesh.add(o);                                          // child → rides the part through every pose
 }
 
-export function makePirate(shirtCol: number, hatCol: number, hatStyle: 'captain' | 'bandana'): THREE.Group {
+export function makePirate(shirtCol: number, hatCol: number, hatStyle: string): THREE.Group {
   const g = new THREE.Group();
   const M = toonMat;
   const parts: PirateParts = {

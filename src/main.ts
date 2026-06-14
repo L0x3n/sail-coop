@@ -1,7 +1,7 @@
 import './style.css';
 import { BOATS, CONFIG } from './config';
 import { clamp, len2, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, charActive, chars, env, game, layout, myChar, netRole, guestHere, owned, p1, p2, prefs, registerChars, session, splats, wind } from './state';
+import { anyGuest, boat, charActive, chars, connected, env, game, layout, MAX_PLAYERS, myChar, netRole, guestHere, owned, p1, p2, prefs, registerChars, session, setConnected, setMyIndex, setNetRole, splats, wind } from './state';
 import { keys, pressedQueue, setModalGetter } from './input';
 import * as audio from './audio';
 import { applyAspect, cam1, cam2, clouds, enableShadows, gulls, renderer, scene, skyDome, sun, viewSize } from './scene';
@@ -29,19 +29,28 @@ import { drawMap, mapOpen, toggleMap } from './map';
 import { drawHud, btnHost, btnJoin, btnSolo, helpOpen, joinCodeEl, restartBtn, toast, toggleHelp } from './hud';
 import {
   PeerCtor, applySnapshot, guestOnData, guestStep, hostNetStep, hostOnData,
-  netCode, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap, sendRoute,
+  netCode, onGuestJoin, onGuestLeave, requestRestart, sendBuy, sendGrab, sendHandsEdge, sendHat, sendMopTap, sendRoute,
   startHost, startJoin, startSolo,
 } from './net';
 import { getInteract } from './hands';
 import type { BoatPreset, Char } from './types';
 
 /* =========================== characters =========================== */
-function makeChar(name: string, shirt: number, hat: number, lx: number, lz: number): Char {
-  const hatStyle = prefs.hats[name === 'P1' ? 0 : 1] ?? (name === 'P1' ? 'captain' : 'bandana');
-  const mesh = makePirate(shirt, hat, hatStyle as 'captain' | 'bandana');
+/* up to four pirates: slot 0 is you, slots 1–3 are drop-in mateys. Each slot has
+   its own shirt + hat so the crew is easy to tell apart. */
+const PIRATE_LOOKS = [
+  { shirt: 0xe8443a, trim: 0x7a3030, hat: 'captain' },   // slot 0 — red  (host / solo)
+  { shirt: 0xffd43b, trim: 0x445522, hat: 'bandana' },   // slot 1 — gold (first matey)
+  { shirt: 0x4dabf7, trim: 0x1c3d5a, hat: 'straw' },     // slot 2 — blue
+  { shirt: 0xb197fc, trim: 0x3b2d5e, hat: 'fancy' },     // slot 3 — violet
+];
+function makeChar(slot: number, lx: number, lz: number): Char {
+  const look = PIRATE_LOOKS[slot];
+  const hatStyle = prefs.hats[slot] ?? look.hat;
+  const mesh = makePirate(look.shirt, look.trim, hatStyle);
   heelGroup.add(mesh);
   return {
-    name, mesh,
+    name: 'P' + (slot + 1), mesh,
     mode: 'deck', station: null,
     pos: v2(lx, lz), vel: v2(),
     knock: 0, walkPhase: 0, facing: 0, pitch: 0,
@@ -56,9 +65,13 @@ function makeChar(name: string, shirt: number, hat: number, lx: number, lz: numb
   };
 }
 registerChars(
-  makeChar('P1', 0xe8443a, 0x7a3030, -0.7, -1.5),   // red — host / solo
-  makeChar('P2', 0xffd43b, 0x445522, 0.9, -1.5),    // gold — the matey
+  makeChar(0, -0.7, -1.5),
+  makeChar(1, 0.9, -1.5),
+  makeChar(2, -0.9, 0.4),
+  makeChar(3, 0.9, 0.4),
 );
+// only you are aboard until mateys join; hide the empty slots
+for (let i = 1; i < chars.length; i++) chars[i].mesh.visible = false;
 
 buildWorld();
 enableShadows([flatWater, fancyWaterMesh, fftWaterMesh, skyDome]);
@@ -318,6 +331,8 @@ window.__sail = {
   get mapOpen() { return mapOpen; },
   get netRole() { return netRole; },
   get guestHere() { return guestHere; },
+  // multiplayer test surface: drive per-slot routing without the WebRTC broker
+  _mp: { setNetRole, setConnected, setMyIndex, anyGuest, MAX_PLAYERS, onGuestJoin, onGuestLeave, get connected() { return connected.slice(); } },
   get inMenu() { return session.inMenu; },
   get docked() { return session.docked; },
   get time() { return session.runTime; },

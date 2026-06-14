@@ -183,23 +183,43 @@ try {
 /* --- net role --- */
 export type NetRole = null | 'host' | 'guest';
 export let netRole: NetRole = null;
-export let guestHere = false;
 export function setNetRole(r: NetRole) { netRole = r; }
-export function setGuestHere(v: boolean) { guestHere = v; }
+
+/* up to four pirates aboard: slot 0 is the host (or the solo player); slots
+   1–3 are mateys who drop in over the network. */
+export const MAX_PLAYERS = 4;
 
 /* --- characters (registered from main once meshes exist) --- */
 export const chars: Char[] = [];
-export let p1: Char;
-export let p2: Char;
-export function registerChars(a: Char, b: Char) { p1 = a; p2 = b; chars.push(a, b); }
+export let p1: Char;   // slot-0 alias (host / solo)
+export let p2: Char;   // slot-1 alias (first matey) — kept for 2-player code paths
+export function registerChars(...cs: Char[]) { chars.push(...cs); p1 = cs[0]; p2 = cs[1]; }
 
-/* which slot is "me": host/solo = 0, a guest is assigned its slot on join.
-   (Phase-1 N-ready: today only 0 and 1 are used.) */
+/* which slots currently have a player aboard. Slot 0 is always present (you);
+   guest slots flip as mateys join/leave. The HOST owns this directly; the GUEST
+   mirrors it from each snapshot's present-mask so it knows who to draw. */
+export const connected: boolean[] = Array.from({ length: MAX_PLAYERS }, (_, i) => i === 0);
+export function setConnected(i: number, v: boolean) { if (i >= 0 && i < connected.length) connected[i] = v; }
+export function setConnectedMask(mask: readonly boolean[]) {
+  for (let i = 0; i < connected.length; i++) connected[i] = i === 0 ? true : !!mask[i];
+}
+export const anyGuest = (): boolean => {
+  for (let i = 1; i < connected.length; i++) if (connected[i]) return true;
+  return false;
+};
+/* legacy "a matey is aboard" flag — derived from `connected`, kept because lots
+   of code reads it. Host keeps it in sync via setGuestHere(anyGuest()). */
+export let guestHere = false;
+export function setGuestHere(v: boolean) { guestHere = v; }
+
+/* which slot is "me": host/solo = 0, a guest is assigned its slot on join. */
 export let myIndex = 0;
 export function setMyIndex(i: number) { myIndex = i; }
 export const myChar = (): Char => chars[myIndex] ?? chars[0];
-export const charActive = (c: Char): boolean =>
-  c === chars[0] || netRole === 'guest' || (netRole === 'host' && guestHere);
+export const charActive = (c: Char): boolean => {
+  const i = chars.indexOf(c);
+  return i === 0 || (i > 0 && connected[i]);
+};
 export const gameStarted = () => !session.inMenu;
 
 /* the closest OTHER player to c (by current position). For two players this is

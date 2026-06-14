@@ -38,7 +38,7 @@ export function worldToLocal2(w: { x: number; z: number }) {
 
 export function charAxes(c: Char): Axes {
   if (c === myChar()) return inputAxes();
-  if (netRole === 'host' && c === p2) return c.netAxes;
+  if (netRole === 'host' && c !== chars[0]) return c.netAxes;   // every matey is driven by their net input
   return ZERO_AXES;
 }
 

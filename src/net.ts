@@ -2,7 +2,7 @@ import Peer, { DataConnection } from 'peerjs';
 import { BOATS, CONFIG, DECK_Y } from './config';
 import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { accepted, boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setMyIndex, setNetRole, netRole, guestHere, wind } from './state';
+import { accepted, anyGuest, boat, chars, connected, env, game, layout, myChar, MAX_PLAYERS, netDrag, owned, prefs, session, setConnected, setConnectedMask, setGuestHere, setMyIndex, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { equipHat, setShipRelay, tryBuy } from './shop';
 import { acceptQuest, abandonQuest } from './quest';
@@ -11,7 +11,7 @@ import { buildShip, setBoatPreset } from './shipMesh';
 import { applyBoom, cannon, fireCannon, resetCannon, setBoomRelay } from './cannon';
 import { barge, resetBarge } from './barge';
 import { clearSplats, placeSplat, removeSplat, setFxRelay } from './critters';
-import { clearHolds, gildMops, handsEdge, mopTap, mops, pressE, resetHands } from './hands';
+import { gildMops, handsEdge, mopTap, mops, pressE, releaseHoldsFor, resetHands } from './hands';
 import type { BoatPreset } from './types';
 import { inputAxes, localDrag } from './input';
 import { applyAspect, scene } from './scene';
@@ -30,12 +30,84 @@ import type { CharSnap, NetMsg, Snapshot } from './types';
    Host -> guest: 20 Hz state snapshots.  Guest -> host: 15 Hz input.
    =========================================================================== */
 let peer: Peer | null = null;
-let conn: DataConnection | null = null;
+let conn: DataConnection | null = null;                                       // GUEST: single link to the host
+const conns: (DataConnection | null)[] = Array.from({ length: MAX_PLAYERS }, () => null);  // HOST: slot -> matey link ([0] unused)
 export let netCode = '';
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const peerId = (code: string) => 'sailcoop-v1-' + code;
-function netSend(m: NetMsg) { if (conn && conn.open) { try { conn.send(m); } catch { /* gone */ } } }
+/* deck spawn spots, one per slot */
+const SPAWN = [{ x: -0.7, z: -1.5 }, { x: 0.9, z: -1.0 }, { x: -0.9, z: 0.5 }, { x: 0.9, z: 0.7 }];
+
+/* HOST broadcasts to every matey; GUEST sends to the host. One role-aware helper. */
+function netSend(m: NetMsg, exceptSlot = -1) {
+  if (netRole === 'host') {
+    for (let i = 1; i < conns.length; i++) {
+      const c = conns[i];
+      if (c && c.open && i !== exceptSlot) { try { c.send(m); } catch { /* gone */ } }
+    }
+  } else if (conn && conn.open) {
+    try { conn.send(m); } catch { /* gone */ }
+  }
+}
+function netSendTo(slot: number, m: NetMsg) {
+  const c = conns[slot];
+  if (c && c.open) { try { c.send(m); } catch { /* gone */ } }
+}
+function freeSlot(): number {                       // lowest unused matey slot, or -1 if the crew is full
+  for (let i = 1; i < MAX_PLAYERS; i++) if (!conns[i]) return i;
+  return -1;
+}
+function crewCount(): number {
+  let n = 0;
+  for (let i = 1; i < MAX_PLAYERS; i++) if (connected[i]) n++;
+  return n;
+}
+const crewLine = (): string => {
+  const n = crewCount();
+  return n === 0 ? 'waiting for your mateys…' : n === 1 ? '1 matey aboard!' : n + ' mateys aboard!';
+};
+/* solo / fresh host: nobody aboard but you */
+function clearGuestSlots() {
+  for (let i = 1; i < MAX_PLAYERS; i++) {
+    conns[i] = null;
+    setConnected(i, false);
+    const c = chars[i];
+    if (c) c.mesh.visible = false;
+  }
+  setGuestHere(false);
+}
+/* a matey's connection opened — sit them on deck, arm their mop, tell them their slot */
+export function onGuestJoin(slot: number) {
+  const c = chars[slot];
+  if (!c) return;
+  setConnected(slot, true); setGuestHere(true);
+  releaseStation(c);
+  if (c.mesh.parent !== heelGroup) { scene.remove(c.mesh); heelGroup.add(c.mesh); }
+  c.mode = 'deck';
+  c.pos.x = SPAWN[slot].x; c.pos.z = SPAWN[slot].z;
+  c.vel.x = 0; c.vel.z = 0; c.knock = 0; c.facing = 0; c.jumpY = 0; c.vy = 0;
+  c.grabbedBy = -1; c.holding = false; c.station = null; c.carry = -1;
+  c.mesh.visible = true;
+  const mp = mops[slot];
+  if (mp) { mp.on = true; mp.held = -1; mp.x = mp.bucket.position.x; mp.z = mp.bucket.position.z; }
+  netChipEl.textContent = 'Code: ' + netCode + ' — ' + crewLine();
+  toast('A matey climbed aboard!', '#aef7a2');
+  netSendTo(slot, { k: 'start', boat: chosenBoat.id, index: slot });
+}
+/* a matey left — free their slot, drop their grabs + mop, hide their pirate */
+export function onGuestLeave(slot: number) {
+  if (!conns[slot] && !connected[slot]) return;       // already cleaned up (close + error both fire)
+  conns[slot] = null;
+  setConnected(slot, false); setGuestHere(anyGuest());
+  const c = chars[slot];
+  if (c) { releaseStation(c); c.mesh.visible = false; }
+  releaseHoldsFor(slot);
+  const mp = mops[slot];
+  if (mp) mp.on = false;
+  netChipEl.textContent = 'Code: ' + netCode + ' — ' + crewLine();
+  toast('Matey disconnected', '#ff8787');
+}
 
 // host toasts + splat add/remove get relayed to the matey
 setToastRelay((text, col) => { if (netRole === 'host') netSend({ k: 'toast', x: text, col }); });
@@ -65,9 +137,8 @@ export function beginPlay() {
 export function startSolo(p?: BoatPreset) {
   if (p) chosenBoat = p;
   setBoatPreset(chosenBoat);
-  setNetRole(null); setGuestHere(false); setMyIndex(0);
-  p2.mesh.visible = false;
-  resetHands(false);                 // one pirate, one mop
+  setNetRole(null); setMyIndex(0);
+  clearGuestSlots();                 // just you — hide every matey slot, one mop
   beginPlay();
 }
 
@@ -80,46 +151,20 @@ export function startHost(p?: BoatPreset) {
   peer.on('open', () => {
     netCode = code;
     setBoatPreset(chosenBoat);
-    setNetRole('host'); setGuestHere(false); setMyIndex(0);
-    p2.mesh.visible = false;
-    resetHands(false);
+    setNetRole('host'); setMyIndex(0);
+    clearGuestSlots();
     beginPlay();
     netChipEl.style.display = 'block';
-    netChipEl.textContent = 'Code: ' + code + ' — waiting for your matey…';
+    netChipEl.textContent = 'Code: ' + code + ' — ' + crewLine();
   });
   peer.on('connection', c => {
-    if (conn && conn.open) { c.close(); return; }       // one matey only
-    conn = c;
-    conn.on('open', () => {
-      setGuestHere(true);
-      releaseStation(p2);
-      if (p2.mesh.parent !== heelGroup) { scene.remove(p2.mesh); heelGroup.add(p2.mesh); }
-      p2.mode = 'deck'; p2.pos.x = 0.9; p2.pos.z = -1.0;
-      p2.vel.x = 0; p2.vel.z = 0; p2.knock = 0; p2.facing = 0;
-      p2.mesh.visible = true;
-      mops[1].on = true;                       // second pirate, second mop
-      mops[1].held = -1;
-      mops[1].x = mops[1].bucket.position.x;
-      mops[1].z = mops[1].bucket.position.z;
-      netChipEl.textContent = 'Code: ' + code + ' — matey aboard!';
-      toast('A matey climbed aboard!', '#aef7a2');
-      netSend({ k: 'start', boat: chosenBoat.id });
-    });
-    conn.on('data', d => hostOnData(d as NetMsg));
-    conn.on('close', () => {
-      conn = null;
-      setGuestHere(false);
-      releaseStation(p2);
-      p2.mesh.visible = false;
-      // drop any grab in BOTH directions (esp. guest-grabbing-host, which would
-      // otherwise leave p1.grabbedBy set forever → host frozen) + clear hold state
-      p1.grabbedBy = -1; p2.grabbedBy = -1; p1.holding = false; p2.holding = false;
-      clearHolds();
-      if (mops[1].held >= 0) chars[mops[1].held].hasMop = false;
-      mops[1].on = false;                      // their mop leaves with them
-      netChipEl.textContent = 'Code: ' + code + ' — matey left, waiting…';
-      toast('Matey disconnected', '#ff8787');
-    });
+    const slot = freeSlot();
+    if (slot < 0) { try { c.close(); } catch { /* already gone */ } return; }   // crew is full (4)
+    conns[slot] = c;
+    c.on('open', () => onGuestJoin(slot));
+    c.on('data', d => hostOnData(d as NetMsg, slot));
+    c.on('close', () => onGuestLeave(slot));
+    c.on('error', () => onGuestLeave(slot));     // a dropped peer fires error, not always close
   });
   peer.on('error', e => {
     netStatusEl.textContent = 'Network trouble (' + e.type + ') — try Host again.';
@@ -129,42 +174,45 @@ export function startHost(p?: BoatPreset) {
 /* a malicious guest can flood any action; cap each kind so it can't DoS/grief
    the host (force-reset spam, grab-lock, buy-spam saveProgress, panel thrash) */
 const MSG_MIN_MS: Record<string, number> = { i: 18, g: 80, f: 80, m0: 80, buy: 250, route: 250, hat: 250, 'restart?': 3000 };
-const lastMsgT: Record<string, number> = Object.create(null);
-export function hostOnData(m: NetMsg) {
+const lastMsgT: Array<Record<string, number>> = [];   // per-slot, so one matey can't throttle another's actions
+export function hostOnData(m: NetMsg, slot: number) {
   if (!m || typeof m !== 'object') return;
+  const c = chars[slot];
+  if (!c) return;                                          // message for a slot with no pirate — ignore
   const minMs = MSG_MIN_MS[m.k];
   if (minMs !== undefined) {
     const now = performance.now();
-    if (now - (lastMsgT[m.k] ?? -1e9) < minMs) return;   // too soon — drop
-    lastMsgT[m.k] = now;
+    const tbl = (lastMsgT[slot] ??= Object.create(null));
+    if (now - (tbl[m.k] ?? -1e9) < minMs) return;          // too soon — drop
+    tbl[m.k] = now;
   }
   if (m.k === 'i') {
-    p2.netAxes.fwd = clamp(+m.a.fwd || 0, -1, 1);
-    p2.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
-    p2.netAxes.j = m.a.j ? 1 : 0;
-    p2.netAxes.h = m.a.h ? 1 : 0;
-    p2.netAxes.u = m.a.u ? 1 : 0;
+    c.netAxes.fwd = clamp(+m.a.fwd || 0, -1, 1);
+    c.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
+    c.netAxes.j = m.a.j ? 1 : 0;
+    c.netAxes.h = m.a.h ? 1 : 0;
+    c.netAxes.u = m.a.u ? 1 : 0;
     // sanitize: a guest can send NaN/Infinity (BinaryPack preserves them) which
     // would poison facing -> sin/cos -> NaN position across the shared sim
     if (m.d) { netDrag.x += clamp(Number.isFinite(m.d.x) ? m.d.x : 0, -4000, 4000); netDrag.y += clamp(Number.isFinite(m.d.y) ? m.d.y : 0, -4000, 4000); }
-    if (Number.isFinite(m.f) && !p2.holding) p2.facing = wrapPi(m.f as number);
+    if (Number.isFinite(m.f) && !c.holding) c.facing = wrapPi(m.f as number);
     session.started = true;
   } else if (m.k === 'g') {
-    if (!session.docked) pressE(p2);        // works ashore too (deliver, board, shop)
+    if (!session.docked) pressE(c);         // works ashore too (deliver, board, shop)
   } else if (m.k === 'f') {
-    handsEdge(p2);
+    handsEdge(c);
   } else if (m.k === 'm0') {
-    if (p2.station === 'cannon') fireCannon(p2);
-    else mopTap(p2);
+    if (c.station === 'cannon') fireCannon(c);
+    else mopTap(c);
   } else if (m.k === 'buy') {
     tryBuy(m.id);
   } else if (m.k === 'hat') {
-    if (['captain', 'bandana', 'straw', 'fancy'].includes(m.id)) equipHat(1, m.id);
+    if (['captain', 'bandana', 'straw', 'fancy'].includes(m.id)) equipHat(slot, m.id);
   } else if (m.k === 'route') {
     if (m.a === 'abandon') abandonQuest(m.i); else acceptQuest(m.i);
   } else if (m.k === 'restart?') {
     resetState();
-    resetHands(guestHere);
+    resetHands(anyGuest());
     clearSplats();
     resetCargo();
     resetCannon();
@@ -187,18 +235,22 @@ export function startJoin(codeRaw: string) {
   peer.on('error', e => { netStatusEl.textContent = 'Could not reach ' + code + ' (' + e.type + ').'; });
 }
 
+const blankC = (): (CharSnap | null)[] => Array.from({ length: MAX_PLAYERS }, () => null);
 const netT: { boat: Snapshot['b'] | null; c: (CharSnap | null)[]; barge: Snapshot['br'] | null } =
-  { boat: null, c: [null, null], barge: null };
+  { boat: null, c: blankC(), barge: null };
 export function guestOnData(m: NetMsg) {
   if (!m || typeof m !== 'object') return;
   if (m.k === 'start') {
+    const idx = m.index ?? 1;            // the host tells us which slot we are
     setBoatPreset(BOATS.find(b => b.id === m.boat) ?? BOATS[1]);
-    setNetRole('guest'); setMyIndex(1);   // a guest is player slot 1 (Phase-1: single guest)
-    p1.mesh.visible = true; p2.mesh.visible = true;
-    p2.pos.x = 0.9; p2.pos.z = -1.0;
+    setNetRole('guest'); setMyIndex(idx); setConnected(idx, true);
+    // show me + the host immediately; the rest of the crew appears as the present-mask arrives
+    chars.forEach((ch, i) => { if (ch) ch.mesh.visible = (i === 0 || i === idx); });
+    const sp = SPAWN[idx] ?? SPAWN[1];
+    chars[idx].pos.x = sp.x; chars[idx].pos.z = sp.z;
     beginPlay();
     netChipEl.style.display = 'block';
-    netChipEl.textContent = 'Aboard as the GOLD pirate';
+    netChipEl.textContent = 'Aboard! — you are pirate ' + (idx + 1);
     return;
   }
   if (m.k === 'toast') { toast(m.x, m.col); return; }
@@ -212,10 +264,11 @@ export function guestOnData(m: NetMsg) {
     return;
   }
   if (m.k === 'boom') { applyBoom(m.x, m.y, m.z, m.vx, m.vy, m.vz); return; }
-  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); resetCargo(); resetCannon(); resetBarge(); netT.boat = null; netT.c = [null, null]; netT.barge = null; return; }
+  if (m.k === 'reset') { resetState(); resetHands(true); clearSplats(); resetCargo(); resetCannon(); resetBarge(); netT.boat = null; netT.c = blankC(); netT.barge = null; return; }
   if (m.k === 's') applySnapshot(m);
 }
 export function applySnapshot(m: Snapshot) {
+  if (m.pr) setConnectedMask(m.pr);   // learn who's aboard before drawing the crew
   netT.boat = m.b;
   boat.vel.x = m.b.vx; boat.vel.z = m.b.vz; boat.angVel = m.b.av;
   boat.rudder = m.b.rud; boat.boomAngle = m.b.boom; boat.heel = m.b.heel;
@@ -263,7 +316,9 @@ export function applySnapshot(m: Snapshot) {
   });
   m.c.forEach((cm, i) => {
     const c = chars[i];
-    if (!c) return;                                      // hostile/desynced peer sending > 2 chars
+    if (!c) return;                                      // hostile/desynced peer sending too many chars
+    if (!connected[i]) { c.mesh.visible = false; netT.c[i] = null; return; }   // empty slot — don't draw
+    c.mesh.visible = true;
     netT.c[i] = cm;
     c.grabbedBy = cm.gb;
     c.hasMop = cm.hm;
@@ -311,7 +366,7 @@ export function guestStep(dt: number) {
   }
   chars.forEach((c, i) => {
     const tg = netT.c[i];
-    if (!tg) return;
+    if (!tg || !connected[i]) return;   // empty slot — nothing to smooth toward
     const wasX = c.pos.x, wasZ = c.pos.z;
     c.pos.x = lerp(c.pos.x, tg.x, k);
     c.pos.z = lerp(c.pos.z, tg.z, k);
@@ -367,6 +422,7 @@ export function hostNetStep(dt: number) {
          anc: boat.anchored },
     w: { a: wind.angle, s: wind.strength, wid: env.weatherId, wl: env.weatherLerp, bw: env.bigWave },
     t: session.runTime, d: session.docked,
+    pr: connected.slice(),
     cg: cargoSnap(),
     g: { gold: game.gold, del: game.delivered, lost: game.lost },
     rt: routeIdx,
@@ -393,9 +449,9 @@ export function sendHat(id: string) { netSend({ k: 'hat', id }); }
 export function requestRestart() {
   if (netRole === 'guest') { netSend({ k: 'restart?' }); return; }   // ask the host
   resetState();
-  resetHands(guestHere);
+  resetHands(anyGuest());
   clearSplats();
-  netT.boat = null; netT.c = [null, null];
+  netT.boat = null; netT.c = blankC();
   if (netRole === 'host') netSend({ k: 'reset' });
 }
 export const PeerCtor = Peer;   // exposed for in-page loopback testing

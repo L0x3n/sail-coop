@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
-import { boat, charActive, chars, layout, nearestOtherPlayer, netDrag, owned, p1 } from './state';
+import { boat, charActive, chars, connected, layout, nearestOtherPlayer, netDrag, owned, p1 } from './state';
 import { heelGroup } from './shipMesh';
 import { charAxes, localToWorld2, nearestStation, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
@@ -98,19 +98,26 @@ function buildBucket(): THREE.Group {
   return g;
 }
 
-export const mops: Mop[] = [0, 1].map(() => ({
+export const mops: Mop[] = [0, 1, 2, 3].map(() => ({   // one per player slot
   held: -1, x: 0, z: 0, h: 0, vx: 0, vz: 0, vy: 0,
   thrown: false, thrower: -1, on: true,
   mesh: buildMopMesh(), bucket: buildBucket(),
 }));
 if (owned.mopGold) gildMops();   // a saved gilded mop stays golden
 
-/* lay the buckets out for the current boat; co-op gets the second mop */
-export function resetMops(coop: boolean) {
-  mops[1].on = coop;
+/* a bucket spot per slot — yours plus one for every matey who might drop in */
+const BUCKET_SPOTS = [
+  { sx: -0.72, sz: -0.35 },   // port aft  (slot 0 — you)
+  { sx:  0.72, sz: -0.35 },   // stbd aft  (slot 1)
+  { sx: -0.72, sz:  0.6 },    // port fwd  (slot 2)
+  { sx:  0.72, sz:  0.6 },    // stbd fwd  (slot 3)
+];
+/* lay the buckets out for the current boat; a mop turns on for each slot aboard */
+export function resetMops(_coop: boolean) {
   mops.forEach((m, i) => {
-    const side = i === 0 ? -1 : 1;
-    m.bucket.position.set(side * layout.deckX * 0.72, DECK_Y, -0.35 * layout.scale);
+    m.on = i === 0 || !!connected[i];      // your mop + one per matey present
+    const spot = BUCKET_SPOTS[i] ?? BUCKET_SPOTS[0];
+    m.bucket.position.set(spot.sx * layout.deckX, DECK_Y, spot.sz * layout.scale);
     m.bucket.visible = m.on;
     m.held = -1;
     m.thrown = false;
@@ -354,8 +361,25 @@ const holds = new Map<Char, Hold>();
 /* --- LMB tap: WHACK the matey with the mop (if not scrubbing) --- */
 const whackCd = new Map<Char, number>();
 
-/* drop every active grab/cooldown — used on reset and on a mid-grab disconnect */
+/* drop every active grab/cooldown — used on a full reset */
 export function clearHolds() { holds.clear(); whackCd.clear(); }
+/* one matey left: undo any grab they were part of (in EITHER direction) and drop
+   their mop, WITHOUT disturbing the other mateys' holds */
+export function releaseHoldsFor(slot: number) {
+  const lc = chars[slot];
+  if (!lc) return;
+  if (lc.holding) { holds.delete(lc); lc.holding = false; }     // they were dragging someone
+  for (const o of chars) if (o.grabbedBy === slot) { o.grabbedBy = -1; o.mash = 0; }
+  if (lc.grabbedBy >= 0) {                                       // they were being dragged
+    const g = chars[lc.grabbedBy];
+    if (g) { g.holding = false; holds.delete(g); }
+    lc.grabbedBy = -1;
+  }
+  lc.mash = 0;
+  whackCd.delete(lc);
+  for (const m of mops) if (m.held === slot) { m.held = -1; m.x = lc.pos.x; m.z = lc.pos.z; }
+  lc.hasMop = false;
+}
 export function mopTap(c: Char) {
   if (c.mode !== 'deck' || !mopOf(c)) return;
   if (nearestSplat(c.pos.x, c.pos.z, scrubReach())) return;   // that press means "scrub"

@@ -83,6 +83,7 @@ export interface Snapshot {
        rud: number; boom: number; heel: number; sf: number; luff: boolean; anc: boolean };
   w: { a: number; s: number; wid: number; wl: number; bw: number };
   t: number; d: boolean;
+  pr: boolean[];  // present-mask: which slots have a player aboard (slot 0 = host)
   c: CharSnap[];
   m: MopSnap[];   // the mops (boat-local)
   cg: CrateSnap[];
@@ -96,7 +97,7 @@ export interface Snapshot {
 }
 export type NetMsg =
   | Snapshot
-  | { k: 'start'; boat: string }
+  | { k: 'start'; boat: string; index?: number }   // host -> guest: your hull + your slot
   | { k: 'i'; a: Axes; f: number; d?: { x: number; y: number } }
   | { k: 'g' }
   | { k: 'toast'; x: string; col?: string }
