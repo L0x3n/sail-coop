@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG, DECK_Y } from './config';
 import { clamp, headVec, lerp, wrapPi } from './mathUtil';
-import { boat, charActive, chars, layout, netDrag, owned, p1 } from './state';
+import { boat, charActive, chars, layout, nearestOtherPlayer, netDrag, owned, p1 } from './state';
 import { heelGroup } from './shipMesh';
 import { charAxes, localToWorld2, nearestStation, releaseStation, tryToggleStation } from './simChars';
 import { mopSplat, nearestSplat } from './critters';
@@ -229,7 +229,7 @@ export function getInteract(c: Char): { kind: InteractKind; label: string; shopC
   if (c.mode === 'deck') {
     const st = nearestStation(c);
     if (st) return { kind: 'station', label: 'E — man the ' + stationName(st) };
-    const other = chars[1 - chars.indexOf(c)];
+    const other = nearestOtherPlayer(c);
     if (other && charActive(other) && other.mode === 'deck' && other.grabbedBy < 0 &&
         Math.hypot(other.pos.x - c.pos.x, other.pos.z - c.pos.z) < CONFIG.grabRange) {
       return { kind: 'grab-hint', label: 'F (hold) — grab your matey' };
@@ -326,7 +326,7 @@ export function handsEdge(c: Char) {
     return;
   }
   // grab the other pirate — they STAY where they are; you have to DRAG them
-  const other = chars[1 - idx];
+  const other = nearestOtherPlayer(c);
   if (!other || !charActive(other) || other.mode !== 'deck') return;
   if (other.grabbedBy >= 0 || c.grabbedBy >= 0) return;
   const dx = other.pos.x - c.pos.x, dz = other.pos.z - c.pos.z;
@@ -360,7 +360,7 @@ export function mopTap(c: Char) {
   if (c.mode !== 'deck' || !mopOf(c)) return;
   if (nearestSplat(c.pos.x, c.pos.z, scrubReach())) return;   // that press means "scrub"
   if ((whackCd.get(c) ?? 0) > 0) return;
-  const other = chars[1 - chars.indexOf(c)];
+  const other = nearestOtherPlayer(c);
   if (!other || !charActive(other) || other.mode !== 'deck' || other.grabbedBy >= 0) return;
   const dx = other.pos.x - c.pos.x, dz = other.pos.z - c.pos.z;
   const d = Math.hypot(dx, dz);
@@ -464,7 +464,7 @@ export function updateHands(dt: number) {
 
     // holding the other pirate: reel them toward the mouse-dragged hold point
     if (c.holding) {
-      const victim = chars[1 - i];
+      const victim = chars.find(v => v.grabbedBy === i);   // whoever this grabber holds (N-general)
       if (!victim || victim.grabbedBy !== i || victim.mode !== 'deck' || c.mode !== 'deck') {
         c.holding = false;
         holds.delete(c);

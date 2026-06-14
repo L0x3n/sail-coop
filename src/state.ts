@@ -193,7 +193,23 @@ export let p1: Char;
 export let p2: Char;
 export function registerChars(a: Char, b: Char) { p1 = a; p2 = b; chars.push(a, b); }
 
-export const myChar = (): Char => (netRole === 'guest' ? p2 : p1);
+/* which slot is "me": host/solo = 0, a guest is assigned its slot on join.
+   (Phase-1 N-ready: today only 0 and 1 are used.) */
+export let myIndex = 0;
+export function setMyIndex(i: number) { myIndex = i; }
+export const myChar = (): Char => chars[myIndex] ?? chars[0];
 export const charActive = (c: Char): boolean =>
-  c === p1 || netRole === 'guest' || (netRole === 'host' && guestHere);
+  c === chars[0] || netRole === 'guest' || (netRole === 'host' && guestHere);
 export const gameStarted = () => !session.inMenu;
+
+/* the closest OTHER player to c (by current position). For two players this is
+   simply "the other one"; for N it's whoever you'd actually grab/bonk. */
+export function nearestOtherPlayer(c: Char): Char | undefined {
+  let best: Char | undefined, bd = Infinity;
+  for (const o of chars) {
+    if (o === c) continue;
+    const d = (o.pos.x - c.pos.x) ** 2 + (o.pos.z - c.pos.z) ** 2;
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best;
+}

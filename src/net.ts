@@ -2,7 +2,7 @@ import Peer, { DataConnection } from 'peerjs';
 import { BOATS, CONFIG, DECK_Y } from './config';
 import { SHORE_Y, routeIdx, setRoute } from './world';
 import { clamp, fmtTime, lerp, wrapPi } from './mathUtil';
-import { accepted, boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setNetRole, netRole, guestHere, wind } from './state';
+import { accepted, boat, chars, env, game, layout, myChar, netDrag, owned, p1, p2, prefs, session, setGuestHere, setMyIndex, setNetRole, netRole, guestHere, wind } from './state';
 import { applyCargoSnap, cargoSnap, resetCargo } from './cargo';
 import { equipHat, setShipRelay, tryBuy } from './shop';
 import { acceptQuest, abandonQuest } from './quest';
@@ -65,7 +65,7 @@ export function beginPlay() {
 export function startSolo(p?: BoatPreset) {
   if (p) chosenBoat = p;
   setBoatPreset(chosenBoat);
-  setNetRole(null); setGuestHere(false);
+  setNetRole(null); setGuestHere(false); setMyIndex(0);
   p2.mesh.visible = false;
   resetHands(false);                 // one pirate, one mop
   beginPlay();
@@ -80,7 +80,7 @@ export function startHost(p?: BoatPreset) {
   peer.on('open', () => {
     netCode = code;
     setBoatPreset(chosenBoat);
-    setNetRole('host'); setGuestHere(false);
+    setNetRole('host'); setGuestHere(false); setMyIndex(0);
     p2.mesh.visible = false;
     resetHands(false);
     beginPlay();
@@ -193,7 +193,7 @@ export function guestOnData(m: NetMsg) {
   if (!m || typeof m !== 'object') return;
   if (m.k === 'start') {
     setBoatPreset(BOATS.find(b => b.id === m.boat) ?? BOATS[1]);
-    setNetRole('guest');
+    setNetRole('guest'); setMyIndex(1);   // a guest is player slot 1 (Phase-1: single guest)
     p1.mesh.visible = true; p2.mesh.visible = true;
     p2.pos.x = 0.9; p2.pos.z = -1.0;
     beginPlay();
