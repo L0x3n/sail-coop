@@ -24,6 +24,9 @@ export const CRATE_N = 24;                                   // pool size (galle
 export const batchSize = () =>
   shipInfo.crates + (owned.bigDeck ? 4 : 0) + (owned.barge && prefs.barge ? 6 : 0);
 export const payPerCrate = () => ROUTES[routeIdx].pay;
+/* small boats earn a per-crate premium so the galleon's raw payload doesn't
+   strictly dominate — skiff hauls less but each crate is worth more */
+const hullPayMul = () => (shipInfo.crates <= 4 ? 1.25 : shipInfo.crates >= 14 ? 0.85 : 1);
 
 /* states: 0 ground(world) · 1 deck(boat-local) · 2 carried · 3 water · 4 gone · 5 barge slot (x = slot idx) */
 export interface Crate {
@@ -161,7 +164,7 @@ export function putDown(c: Char, toss = false) {
     const tx = c.pos.x + f.x * ahead, tz = c.pos.z + f.z * ahead;
     if (Math.hypot(tx - DELIVERY.x, tz - DELIVERY.z) < DELIVERY.r) {
       // SOLD! that's the whole game
-      const pay = Math.round(payPerCrate() * (cr.lashed ? 0.8 : 1));
+      const pay = Math.round(payPerCrate() * (cr.lashed ? 0.8 : 1) * hullPayMul());
       cr.s = 4;
       game.gold += pay;
       game.delivered++;
@@ -247,9 +250,14 @@ export function updateCargo(dt: number) {
       if (cr.floatT <= 0) {
         cr.s = 4;
         game.lost++;
+        // harbour docks you for lost cargo — a gold sink so careful sailing
+        // matters and gold stays meaningful after the shop is bought
+        const fine = Math.min(game.gold, Math.round(payPerCrate() * 0.5));
+        game.gold -= fine;
+        saveProgress();
         spawnDroplets(cr.x, cr.z, 5, 1.0, 1.5);
         spawnWake(cr.x, cr.z, 0, 1.0);
-        toast('A crate sank… (-1)', '#ff8787');
+        toast('A crate sank…' + (fine > 0 ? ' −' + fine + 'g harbour fine' : ''), '#ff8787');
         checkBatchDone();
       }
     } else if (cr.s === 2) {
