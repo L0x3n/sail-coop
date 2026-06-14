@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sail Together! — co-op sailing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="./assets/index-B0WSKyHD.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BVJ5KvNb.css">
+</head>
+<body>
+<div id="grade"></div>
+<div id="topbar" class="hud">
+  <div class="col"><canvas id="compass" width="90" height="90"></canvas><div id="windtxt">wind</div></div>
+  <div class="col"><div class="big" id="speed">0.0</div><div>knots</div><div class="big" id="timer">0:00</div></div>
+  <div class="col"><div class="big" id="gold">0g</div><div>gold</div></div>
+</div>
+<div id="msg" class="hud">
+  <h1 id="msgTitle">DOCKED!</h1>
+  <p id="msgText">Time: 0:00</p>
+  <button id="restartBtn">Sail again</button>
+</div>
+<div id="objective" class="hud"></div>
+<div id="waypoint" class="hud"></div>
+<div id="trimCoach" class="hud"></div>
+<div id="toast" class="hud"></div>
+<div id="promptP1" class="sideprompt"></div>
+<div id="struggle" class="hud"></div>
+<div id="scrubRing" class="hud"><div id="scrubFill"></div></div>
+<div id="mopHint" class="hud"></div>
+<div id="netchip" class="hud"></div>
+<div id="helpHint" class="hud"><b>?</b> help</div>
+<div id="help" class="hud">
+  <div id="helpPanel">
+    <h2>HOW TO SAIL</h2>
+    <p><b>WASD</b> move · <b>mouse</b> look (click or drag) · <b>SPACE</b> jump · <b>E</b> interact</p>
+    <p><b>Get going:</b> step onto the boat, go to the bow and press <b>E</b> to raise the anchor, then man the <b>HELM</b> (wheel) and the <b>SAIL</b> (mast) with <b>E</b>. At a station, <b>A/D</b> steers / trims.</p>
+    <p><b>The wind:</b> you can't sail straight into it — the compass shows a <span style="color:#ff6b6b">red no-go cone</span>. Keep your bow out of it; zig-zag (tack) to work upwind.</p>
+    <p><b>The job:</b> load crates from the home pier, sail to the <span style="color:#69db7c">green flag</span>, stop &amp; drop anchor, then carry crates onto the circle for gold.</p>
+    <p><b>Hands:</b> <b>F</b> grab your matey (release = throw, mash F to escape). Mop: hold <b>LMB</b> scrub · tap <b>LMB</b> bonk · <b>F</b> throw.</p>
+    <p><b>M</b> map · <b>Q</b> water style · <b>N</b> sound · <b>?</b> close</p>
+    <button id="helpClose">Got it</button>
+  </div>
+</div>
+<div id="mapWrap"><canvas id="bigmap" width="560" height="560"></canvas></div>
+<div id="shopWrap">
+  <div id="shopPanel">
+    <div id="shopHead"><b>THE CHANDLER</b><span id="shopGold">0g</span><button id="shopClose">✕</button></div>
+    <div id="shopList"></div>
+    <div id="shopFoot">nothing here makes sailing easier — that's the point</div>
+  </div>
+</div>
+<div id="questWrap">
+  <div id="questPanel">
+    <div id="questHead"><b>📋 THE JOB BOARD</b><button id="questClose">✕</button></div>
+    <div id="questList"></div>
+    <div id="questFoot">load crates from the home pier, sail to the green flag, drop them for gold · change jobs anytime</div>
+  </div>
+</div>
+<div id="modeSelect">
+  <div class="menuTitle">
+    <div class="gameLogo">
+      <svg class="logoSkull" viewBox="0 0 100 84" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g fill="#fbf3e0" stroke="#15243c" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+          <rect x="14" y="50" width="72" height="13" rx="6.5" transform="rotate(38 50 56)"/>
+          <rect x="14" y="50" width="72" height="13" rx="6.5" transform="rotate(-38 50 56)"/>
+          <path d="M50 6C28 6 18 21 18 39c0 11 6 17 13 19v9h38v-9c7-2 13-8 13-19C82 21 72 6 50 6z"/>
+        </g>
+        <g fill="#15243c">
+          <circle cx="38" cy="40" r="8"/><circle cx="62" cy="40" r="8"/>
+          <path d="M46 54l4 8 4-8z"/>
+        </g>
+      </svg>
+      <span class="logoSail">Sail</span>
+      <span class="logoTogether">Together!</span>
+    </div>
+    <div class="tagline">First-person pirates · one stubborn boat · run cargo for gold</div>
+  </div>
+  <div class="menuCard">
+    <button id="btnSolo" class="menubtn primary">🧭&nbsp; Singleplayer</button>
+    <button id="btnHost" class="menubtn">⚓&nbsp; Host online game</button>
+    <div class="joinrow">
+      <input id="joinCode" maxlength="6" placeholder="CODE" autocomplete="off">
+      <button id="btnJoin" class="menubtn">🪢&nbsp; Join matey</button>
+    </div>
+    <div id="netStatus"></div>
+  </div>
+</div>
+</body>
+</html>
