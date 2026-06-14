@@ -25,9 +25,10 @@ import type { CharSnap, NetMsg, Snapshot } from './types';
 
 /* ===========================================================================
    Sea-of-Thieves-style drop-in co-op over WebRTC (PeerJS public broker):
-   the HOST runs the simulation and starts sailing immediately; the matey
-   types the 4-letter code and spawns aboard as the gold pirate.
-   Host -> guest: 20 Hz state snapshots.  Guest -> host: 15 Hz input.
+   the HOST runs the simulation and starts sailing immediately; up to three
+   mateys type the 6-letter code and spawn aboard in the next free slot (1..3).
+   Host -> guests: 20 Hz state snapshots (broadcast).  Guest -> host: 15 Hz input.
+   Host-authoritative star: only the host simulates; guests send input + lerp.
    =========================================================================== */
 let peer: Peer | null = null;
 let conn: DataConnection | null = null;                                       // GUEST: single link to the host
@@ -223,7 +224,7 @@ export function hostOnData(m: NetMsg, slot: number) {
 
 export function startJoin(codeRaw: string) {
   const code = (codeRaw || '').trim().toUpperCase();
-  if (code.length !== 4) { netStatusEl.textContent = 'Type the 4-letter code first.'; return; }
+  if (code.length !== 6) { netStatusEl.textContent = 'Type the 6-letter code first.'; return; }   // host codes are 6 chars
   netStatusEl.textContent = 'Rowing over to ' + code + '…';
   peer = new Peer();
   peer.on('open', () => {
