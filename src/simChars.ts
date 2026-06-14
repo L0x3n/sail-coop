@@ -1,6 +1,6 @@
 import { CONFIG, DECK_Y, RAIL_H, STATION_R } from './config';
 import { D2R, clamp, headVec, lerp, rightVec, v2, wrapPi } from './mathUtil';
-import { boat, chars, env, game, layout, myChar, netRole, owned, p2, session, slipAt, tuning } from './state';
+import { boat, charActive, chars, env, game, layout, myChar, netRole, owned, p2, session, slipAt, tuning } from './state';
 import { CANNON_BASE, cannon } from './cannon';
 import { inputAxes, ZERO_AXES } from './input';
 import { spawnDroplets, spawnSplash, spawnWake } from './effects';
@@ -168,10 +168,15 @@ export function updateChar(c: Char, ci: number, dt: number, t: number) {
   // held by the other pirate: position is pinned by updateHands; the limp
   // dangle itself is the ragdoll's job (animateChar)
   if (c.grabbedBy >= 0) {
-    c.animMoving = false;
-    c.mesh.position.set(c.pos.x, DECK_Y + c.jumpY, c.pos.z);
-    c.mesh.rotation.set(0, c.facing, 0);
-    return;
+    const g = chars[c.grabbedBy];
+    if (!g || !charActive(g) || !g.holding) {
+      c.grabbedBy = -1;                 // grabber vanished/inactive → self-heal, don't freeze forever
+    } else {
+      c.animMoving = false;
+      c.mesh.position.set(c.pos.x, DECK_Y + c.jumpY, c.pos.z);
+      c.mesh.rotation.set(0, c.facing, 0);
+      return;
+    }
   }
 
   if (c.mode === 'deck') {

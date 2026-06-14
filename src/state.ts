@@ -153,22 +153,27 @@ export function saveProgress() {
     localStorage.setItem('sail.save', JSON.stringify({ gold: game.gold, owned, prefs }));
   } catch { /* private mode etc */ }
 }
-export function loadProgress() {
+export function loadProgress(): 'none' | 'ok' | 'corrupt' {
+  const raw = localStorage.getItem('sail.save');
+  if (!raw) return 'none';
   try {
-    const raw = localStorage.getItem('sail.save');
-    if (!raw) return;
     const s = JSON.parse(raw);
     if (Number.isFinite(s.gold)) game.gold = Math.max(0, Math.floor(s.gold));   // reject NaN/Infinity/negatives
     if (s.owned) for (const k of Object.keys(owned)) owned[k as keyof typeof owned] = !!s.owned[k];   // known keys, real booleans
     if (s.prefs?.ship) prefs.ship = s.prefs.ship;
     if (Array.isArray(s.prefs?.hats)) prefs.hats = s.prefs.hats.filter((h: unknown) => typeof h === 'string');
     if (typeof s.prefs?.barge === 'boolean') prefs.barge = s.prefs.barge;
-  } catch { /* corrupt save -> fresh start */ }
+    return 'ok';
+  } catch {
+    try { localStorage.setItem('sail.save.bak', raw); } catch { /* quota/blocked */ }
+    return 'corrupt';   // keep a backup; do NOT treat as fresh (would burn the grant + zero the balance)
+  }
 }
-loadProgress();
-// one-time starter grant — gets the shops within reach (and fulfils the 1000-gold ask)
+const saveState = loadProgress();
+// one-time starter grant — only on a genuinely fresh start, so a one-off save
+// corruption doesn't skip the grant AND get overwritten with 0 gold
 try {
-  if (localStorage.getItem('sail.grant1k') !== '1') {
+  if (saveState === 'none' && localStorage.getItem('sail.grant1k') !== '1') {
     game.gold += 1000;
     localStorage.setItem('sail.grant1k', '1');
     saveProgress();

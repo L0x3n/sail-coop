@@ -45,8 +45,9 @@ export function updateDirector(dt: number) {
     env.bigWave = lerp(env.bigWave, 0, Math.min(1, 3 * dt));
   }
 
-  // the calm is sacred near the piers and during summaries
-  if (D.phase === 'calm' && (session.inMenu || nearPiers() || respawnPending())) return;
+  // the calm is sacred near the piers, during summaries, and while a squall is
+  // already raging (don't stack a gust/wave/swarm on top of the weather)
+  if (D.phase === 'calm' && (session.inMenu || nearPiers() || respawnPending() || env.weatherId === 2)) return;
 
   D.timer -= dt;
   if (D.timer > 0) {

@@ -187,9 +187,16 @@ export function putDown(c: Char, toss = false) {
 }
 
 /* --- host-side simulation --- */
+let frayT = 0;
 export function updateCargo(dt: number) {
   const anyActive = crates.some(cr => cr.s !== 4);
   if (anyActive) game.batchT += dt;
+  // lashing isn't a free pass: in a squall or a big swell the lines fray and can
+  // snap, so "lash and bulldoze" only guarantees safety in calm weather
+  if (lashed() && (env.weatherId === 2 || Math.abs(env.bigWave) > 0.45)) {
+    frayT += dt;
+    if (frayT >= 7) { frayT = 0; if (Math.random() < 0.6) snapLashings(); }
+  } else if (frayT > 0) frayT = Math.max(0, frayT - dt * 0.5);
   const fwd = headVec(boat.yaw), rgt = rightVec(boat.yaw);
   for (const cr of crates) {
     if (cr.s === 1) {

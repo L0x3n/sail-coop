@@ -31,12 +31,12 @@ export const CAT_TITLE: Record<ShopCat, string> = {
   boat: '⚓ THE SHIPWRIGHT', hats: '🎩 THE OUTFITTER', mop: '🧹 THE DECKHAND',
 };
 export const CATALOG: ShopItem[] = [
-  { id: 'skiff', name: 'The Skiff', desc: 'small, twitchy, tips like a coin — 4 crates, quick runs', price: 80, kind: 'ship', key: 'skiff' },
-  { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — 14 crates of walking liability', price: 160, kind: 'ship', key: 'galleon' },
-  { id: 'bigDeck', name: 'Bigger cargo deck', desc: '+4 crates per shipment. More money, more deck to lose it on.', price: 120, kind: 'upgrade', key: 'bigDeck' },
-  { id: 'chartNorth', name: 'Northern chart', desc: 'unlocks the North Light route — 32g a crate, long haul', price: 60, kind: 'upgrade', key: 'chartNorth' },
-  { id: 'cannon', name: 'The cannon', desc: 'aim, FIRE, regret. Good for salutes and seagulls. Seagulls remember.', price: 140, kind: 'upgrade', key: 'cannon' },
-  { id: 'barge', name: 'Cargo barge', desc: '+6 crates on a trailer that steers itself and CAN capsize', price: 180, kind: 'upgrade', key: 'barge' },
+  { id: 'skiff', name: 'The Skiff', desc: 'small, twitchy, tips like a coin — 4 crates, quick runs', price: 60, kind: 'ship', key: 'skiff' },
+  { id: 'galleon', name: 'The Galleon', desc: 'huge, stately, turns next week — 14 crates of walking liability', price: 450, kind: 'ship', key: 'galleon' },
+  { id: 'bigDeck', name: 'Bigger cargo deck', desc: '+4 crates per shipment. More money, more deck to lose it on.', price: 200, kind: 'upgrade', key: 'bigDeck' },
+  { id: 'chartNorth', name: 'Northern chart', desc: 'unlocks the North Light route — 32g a crate, long haul', price: 120, kind: 'upgrade', key: 'chartNorth' },
+  { id: 'cannon', name: 'The cannon', desc: 'aim, FIRE, regret. Good for salutes and seagulls. Seagulls remember.', price: 160, kind: 'upgrade', key: 'cannon' },
+  { id: 'barge', name: 'Cargo barge', desc: '+6 crates on a trailer that steers itself and CAN capsize', price: 320, kind: 'upgrade', key: 'barge' },
   { id: 'hatStraw', name: 'Straw hat', desc: 'beach mode. Flies off when you get bonked.', price: 30, kind: 'hat', key: 'hatStraw', style: 'straw' },
   { id: 'hatFancy', name: 'Admiral tricorn', desc: 'gold trim. The gulls aim for it.', price: 45, kind: 'hat', key: 'hatFancy', style: 'fancy' },
   { id: 'mopQuick', name: 'Quick mop', desc: 'scrubs the gull-mess off the deck noticeably faster', price: 40, kind: 'mop', key: 'mopQuick' },

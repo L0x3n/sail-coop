@@ -74,7 +74,7 @@ export function startSolo(p?: BoatPreset) {
 export function startHost(p?: BoatPreset) {
   if (p) chosenBoat = p;
   let code = '';
-  for (let i = 0; i < 4; i++) code += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];
+  for (let i = 0; i < 6; i++) code += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];  // 31^6 ≈ 887M — not scannable
   netStatusEl.textContent = 'Raising the flag…';
   peer = new Peer(peerId(code));
   peer.on('open', () => {
@@ -126,8 +126,18 @@ export function startHost(p?: BoatPreset) {
     netChipEl.textContent = 'Net error: ' + e.type;
   });
 }
+/* a malicious guest can flood any action; cap each kind so it can't DoS/grief
+   the host (force-reset spam, grab-lock, buy-spam saveProgress, panel thrash) */
+const MSG_MIN_MS: Record<string, number> = { i: 18, g: 80, f: 80, m0: 80, buy: 250, route: 250, hat: 250, 'restart?': 3000 };
+const lastMsgT: Record<string, number> = Object.create(null);
 export function hostOnData(m: NetMsg) {
   if (!m || typeof m !== 'object') return;
+  const minMs = MSG_MIN_MS[m.k];
+  if (minMs !== undefined) {
+    const now = performance.now();
+    if (now - (lastMsgT[m.k] ?? -1e9) < minMs) return;   // too soon — drop
+    lastMsgT[m.k] = now;
+  }
   if (m.k === 'i') {
     p2.netAxes.fwd = clamp(+m.a.fwd || 0, -1, 1);
     p2.netAxes.strafe = clamp(+m.a.strafe || 0, -1, 1);
