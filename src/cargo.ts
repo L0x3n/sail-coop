@@ -249,6 +249,7 @@ export function updateCargo(dt: number) {
       const ch = chars[cr.carrier];
       if (!ch || !charActive(ch) || ch.carry !== crates.indexOf(cr)) {
         cr.s = 1; cr.carrier = -1;        // desync safety
+        if (ch) ch.carry = -1;            // ...and clear the carrier's index (no ghost crate on reconnect)
       } else if (ch.mode === 'water' || ch.knock > 0 || ch.grabbedBy >= 0) {
         // dropped it — into the sea or onto whatever is underfoot
         ch.carry = -1;

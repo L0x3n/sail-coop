@@ -158,10 +158,10 @@ export function loadProgress() {
     const raw = localStorage.getItem('sail.save');
     if (!raw) return;
     const s = JSON.parse(raw);
-    if (typeof s.gold === 'number') game.gold = s.gold;
-    Object.assign(owned, s.owned ?? {});
+    if (Number.isFinite(s.gold)) game.gold = Math.max(0, Math.floor(s.gold));   // reject NaN/Infinity/negatives
+    if (s.owned) for (const k of Object.keys(owned)) owned[k as keyof typeof owned] = !!s.owned[k];   // known keys, real booleans
     if (s.prefs?.ship) prefs.ship = s.prefs.ship;
-    if (Array.isArray(s.prefs?.hats)) prefs.hats = s.prefs.hats;
+    if (Array.isArray(s.prefs?.hats)) prefs.hats = s.prefs.hats.filter((h: unknown) => typeof h === 'string');
     if (typeof s.prefs?.barge === 'boolean') prefs.barge = s.prefs.barge;
   } catch { /* corrupt save -> fresh start */ }
 }

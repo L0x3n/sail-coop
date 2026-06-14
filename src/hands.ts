@@ -495,7 +495,7 @@ export function updateHands(dt: number) {
         victim.vy = 0;
         victim.facing = wrapPi(Math.atan2(c.pos.x - victim.pos.x, c.pos.z - victim.pos.z));
         if (victim.station) {
-          const sp = victim.station === 'helm' ? layout.helm : layout.sailSta;
+          const sp = victim.station === 'helm' ? layout.helm : victim.station === 'cannon' ? layout.cannonSta : layout.sailSta;
           // tug-of-war: pulling the hold point away from their grip builds strain
           const gap = Math.hypot(tx - victim.pos.x, tz - victim.pos.z);
           hp.strain += gap * dt * 1.7;

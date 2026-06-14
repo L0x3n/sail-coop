@@ -134,8 +134,10 @@ export function hostOnData(m: NetMsg) {
     p2.netAxes.j = m.a.j ? 1 : 0;
     p2.netAxes.h = m.a.h ? 1 : 0;
     p2.netAxes.u = m.a.u ? 1 : 0;
-    if (m.d) { netDrag.x += +m.d.x || 0; netDrag.y += +m.d.y || 0; }
-    if (typeof m.f === 'number' && !p2.holding) p2.facing = wrapPi(m.f);
+    // sanitize: a guest can send NaN/Infinity (BinaryPack preserves them) which
+    // would poison facing -> sin/cos -> NaN position across the shared sim
+    if (m.d) { netDrag.x += clamp(Number.isFinite(m.d.x) ? m.d.x : 0, -4000, 4000); netDrag.y += clamp(Number.isFinite(m.d.y) ? m.d.y : 0, -4000, 4000); }
+    if (Number.isFinite(m.f) && !p2.holding) p2.facing = wrapPi(m.f as number);
     session.started = true;
   } else if (m.k === 'g') {
     if (!session.docked) pressE(p2);        // works ashore too (deliver, board, shop)
@@ -147,7 +149,7 @@ export function hostOnData(m: NetMsg) {
   } else if (m.k === 'buy') {
     tryBuy(m.id);
   } else if (m.k === 'hat') {
-    equipHat(1, m.id);
+    if (['captain', 'bandana', 'straw', 'fancy'].includes(m.id)) equipHat(1, m.id);
   } else if (m.k === 'route') {
     if (m.a === 'abandon') abandonQuest(m.i); else acceptQuest(m.i);
   } else if (m.k === 'restart?') {
@@ -251,6 +253,7 @@ export function applySnapshot(m: Snapshot) {
   });
   m.c.forEach((cm, i) => {
     const c = chars[i];
+    if (!c) return;                                      // hostile/desynced peer sending > 2 chars
     netT.c[i] = cm;
     c.grabbedBy = cm.gb;
     c.hasMop = cm.hm;
