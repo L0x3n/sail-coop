@@ -253,11 +253,20 @@ function renderViews() {
 let lastNow = performance.now();
 function frame(now: number) {
   requestAnimationFrame(frame);
-  const dt = clamp((now - lastNow) / 1000, 0, 0.033);
+  // real elapsed, capped so a long stall (tab refocus) can't spiral into a
+  // hundred catch-up steps — it just advances 0.1s
+  const dt = Math.min((now - lastNow) / 1000, 0.1);
   lastNow = now;
   if (!window.__sailPaused) {
     if (netRole === 'guest') { handleLocalKeys(); guestStep(dt); }
-    else { physicsStep(dt); hostNetStep(dt); }
+    else {
+      // SUB-STEP the authoritative physics at ≤1/60 so it advances REAL time
+      // (no slow-motion under load, no big-dt blow-ups) instead of clamping dt
+      // and running slow. At ≤60fps this is one normal step — identical feel.
+      let acc = dt;
+      while (acc > 1e-4) { const sdt = Math.min(acc, 1 / 60); physicsStep(sdt); acc -= sdt; }
+      hostNetStep(dt);
+    }
   }
   visualStep(dt);
   drawHud(session.simT);
